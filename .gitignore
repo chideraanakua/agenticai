@@ -1,2 +1,4 @@
 env/
 team-onboarding.md
+.env
+__pycache__
