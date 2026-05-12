@@ -17,7 +17,10 @@ What it does:
 import sys
 import json
 import requests
-from detect import detect_objects
+
+# Switch between detectors here:
+# from detect import detect_objects           # OpenCV (color-based, no API key needed)
+from detect import detect_objects_gemini as detect_objects  # Gemini (smarter, needs API key)
 
 def main():
     if len(sys.argv) < 2:
