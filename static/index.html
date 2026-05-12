@@ -1,0 +1,1261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phantom Limb — Adaptive Spatial-Sorting Engine</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      :root {
+        --bg: #0c0d14;
+        --surface: #14151f;
+        --surface2: #1a1b28;
+        --border: #2a2b3a;
+        --text: #e0e0ea;
+        --muted: #7a7a8a;
+        --accent: #378add;
+        --green: #5dca7b;
+        --red: #e24b4a;
+        --amber: #ef9f27;
+        --purple: #7f77dd;
+        --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+        --mono: "SF Mono", "Fira Code", monospace;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font);
+        overflow: hidden;
+        height: 100vh;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .header h1 {
+        font-size: 16px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+      }
+      .header h1 span {
+        color: var(--accent);
+      }
+      .header .status {
+        font-size: 11px;
+        color: var(--muted);
+        font-family: var(--mono);
+      }
+      .unity-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 4px;
+        vertical-align: middle;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap: 1px;
+        height: calc(100vh - 49px);
+        background: var(--border);
+      }
+      .panel {
+        background: var(--surface);
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .panel-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .panel-badge {
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-family: var(--mono);
+      }
+      .panel-content {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+      }
+      #camera-feed,
+      #annotated-canvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      #annotated-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+      .btn {
+        padding: 8px 18px;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: var(--font);
+        transition: all 0.15s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: white;
+      }
+      .btn-primary:hover {
+        background: #2a6fc0;
+      }
+      .btn-primary:disabled {
+        background: #333;
+        color: #666;
+        cursor: not-allowed;
+      }
+      .btn-sm {
+        padding: 5px 12px;
+        font-size: 11px;
+      }
+      .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+      .btn-outline:hover {
+        border-color: var(--accent);
+        color: var(--text);
+      }
+      .camera-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 5;
+      }
+      .camera-overlay.hidden {
+        display: none;
+      }
+      .steps-list {
+        padding: 10px 14px;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .step-item {
+        display: flex;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        margin-bottom: 6px;
+        background: var(--surface2);
+        border: 1px solid transparent;
+        transition: all 0.3s;
+      }
+      .step-item.active {
+        border-color: var(--accent);
+        background: rgba(55, 138, 221, 0.1);
+      }
+      .step-item.done {
+        opacity: 0.5;
+      }
+      .step-num {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 500;
+        background: var(--border);
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .step-item.active .step-num {
+        background: var(--accent);
+        color: white;
+      }
+      .step-item.done .step-num {
+        background: var(--green);
+        color: white;
+      }
+      .step-text {
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .step-label {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .step-reason {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .sim-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .agent-label {
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-weight: 500;
+        font-family: var(--mono);
+      }
+      .agent-1 {
+        background: rgba(127, 119, 221, 0.15);
+        color: var(--purple);
+      }
+      .agent-2 {
+        background: rgba(93, 202, 123, 0.15);
+        color: var(--green);
+      }
+      .loading-bar {
+        height: 2px;
+        background: var(--surface2);
+        overflow: hidden;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 10;
+      }
+      .loading-bar .fill {
+        height: 100%;
+        background: var(--accent);
+        width: 0%;
+        transition: width 0.3s;
+      }
+      .loading-bar.active .fill {
+        animation: loading 2s ease-in-out infinite;
+      }
+      @keyframes loading {
+        0% {
+          width: 0;
+          margin-left: 0;
+        }
+        50% {
+          width: 40%;
+        }
+        100% {
+          width: 0;
+          margin-left: 100%;
+        }
+      }
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--muted);
+        gap: 8px;
+        font-size: 13px;
+      }
+      .log-line {
+        font-size: 11px;
+        font-family: var(--mono);
+        padding: 2px 14px;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+      .log-line.detect {
+        color: var(--purple);
+      }
+      .log-line.plan {
+        color: var(--green);
+      }
+      .log-line.error {
+        color: var(--red);
+      }
+      .bottom-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1><span>PHANTOM</span> LIMB</h1>
+      <div class="status">
+        <span
+          class="unity-dot"
+          id="unityDot"
+          style="background: var(--red)"
+        ></span>
+        <span id="unityStatus">unity: disconnected</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Panel 1: Camera / Input -->
+      <div class="panel" id="p-camera">
+        <div class="panel-header">
+          <span class="panel-label">Workspace input</span>
+          <span class="agent-label agent-1">Agent 1: perception</span>
+        </div>
+        <div class="panel-content">
+          <video id="camera-feed" autoplay playsinline></video>
+          <img
+            id="snapshot-img"
+            style="
+              display: none;
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
+            "
+          />
+          <div class="camera-overlay" id="cameraOverlay">
+            <div style="color: var(--muted); font-size: 13px">
+              No camera active
+            </div>
+          </div>
+        </div>
+        <div class="bottom-bar">
+          <button
+            class="btn btn-primary"
+            id="btnCamera"
+            onclick="toggleCamera()"
+          >
+            Start camera
+          </button>
+          <button
+            class="btn btn-primary"
+            id="btnScan"
+            onclick="scanWorkspace()"
+            disabled
+          >
+            Scan workspace
+          </button>
+          <button
+            class="btn btn-outline btn-sm"
+            id="btnUpload"
+            onclick="uploadImage()"
+          >
+            Upload photo
+          </button>
+          <input
+            type="file"
+            id="fileInput"
+            accept="image/*"
+            style="display: none"
+            onchange="handleUpload(event)"
+          />
+        </div>
+        <div class="loading-bar" id="detectLoader">
+          <div class="fill"></div>
+        </div>
+      </div>
+
+      <!-- Panel 2: Annotated Workspace -->
+      <div class="panel" id="p-annotated">
+        <div class="panel-header">
+          <span class="panel-label">Detected objects</span>
+          <span
+            class="panel-badge"
+            id="objCount"
+            style="background: rgba(55, 138, 221, 0.15); color: var(--accent)"
+            >—</span
+          >
+        </div>
+        <div class="panel-content">
+          <canvas id="annotated-canvas"></canvas>
+          <div class="empty-state" id="annotEmpty">
+            <div style="font-size: 24px; opacity: 0.3">◎</div>
+            <div>Scan a workspace to see detections</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 3: Sorting Plan -->
+      <div class="panel" id="p-plan">
+        <div class="panel-header">
+          <span class="panel-label">Sorting plan</span>
+          <span class="agent-label agent-2">Agent 2: planner</span>
+        </div>
+        <div class="steps-list" id="stepsList">
+          <div class="empty-state" id="planEmpty">
+            <div style="font-size: 24px; opacity: 0.3">⟡</div>
+            <div>Waiting for detection</div>
+          </div>
+        </div>
+        <div class="bottom-bar">
+          <button
+            class="btn btn-primary btn-sm"
+            id="btnPlan"
+            onclick="generatePlan()"
+            disabled
+          >
+            Generate plan
+          </button>
+          <button
+            class="btn btn-primary btn-sm"
+            id="btnExec"
+            onclick="executePlan()"
+            disabled
+          >
+            Execute in sim
+          </button>
+          <div
+            id="planStatus"
+            style="
+              font-size: 11px;
+              color: var(--muted);
+              margin-left: auto;
+              font-family: var(--mono);
+            "
+          ></div>
+        </div>
+        <div class="loading-bar" id="planLoader"><div class="fill"></div></div>
+      </div>
+
+      <!-- Panel 4: Three.js Simulation -->
+      <div class="panel" id="p-sim">
+        <div class="panel-header">
+          <span class="panel-label">Digital twin simulation</span>
+          <span
+            class="panel-badge"
+            id="simStatus"
+            style="background: rgba(93, 202, 123, 0.15); color: var(--green)"
+            >idle</span
+          >
+        </div>
+        <div class="panel-content">
+          <canvas class="sim-canvas" id="simCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+      const API = "";
+      let stream = null;
+      let workspaceData = null;
+      let planData = null;
+      let sourceImage = null;
+
+      // ============================================================
+      // CAMERA
+      // ============================================================
+
+      async function toggleCamera() {
+        const btn = document.getElementById("btnCamera");
+        const video = document.getElementById("camera-feed");
+        const overlay = document.getElementById("cameraOverlay");
+
+        if (stream) {
+          stream.getTracks().forEach((t) => t.stop());
+          stream = null;
+          video.srcObject = null;
+          btn.textContent = "Start camera";
+          document.getElementById("btnScan").disabled = true;
+          overlay.classList.remove("hidden");
+          return;
+        }
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "environment",
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          });
+          video.srcObject = stream;
+          btn.textContent = "Stop camera";
+          document.getElementById("btnScan").disabled = false;
+          overlay.classList.add("hidden");
+        } catch (e) {
+          alert('Camera access denied. Use "Upload photo" instead.');
+        }
+      }
+
+      function uploadImage() {
+        document.getElementById("fileInput").click();
+      }
+
+      function handleUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const img = document.getElementById("snapshot-img");
+          img.src = e.target.result;
+          img.style.display = "block";
+          document.getElementById("camera-feed").style.display = "none";
+          document.getElementById("cameraOverlay").classList.add("hidden");
+          sourceImage = e.target.result;
+          runDetection(sourceImage);
+        };
+        reader.readAsDataURL(file);
+      }
+
+      // ============================================================
+      // DETECTION (Agent 1)
+      // ============================================================
+
+      async function scanWorkspace() {
+        const video = document.getElementById("camera-feed");
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+
+        const img = document.getElementById("snapshot-img");
+        img.src = dataUrl;
+        img.style.display = "block";
+        video.style.display = "none";
+
+        sourceImage = dataUrl;
+        await runDetection(dataUrl);
+      }
+
+      async function runDetection(imageDataUrl) {
+        const loader = document.getElementById("detectLoader");
+        loader.classList.add("active");
+        document.getElementById("btnScan").disabled = true;
+        document.getElementById("btnPlan").disabled = true;
+        document.getElementById("objCount").textContent = "detecting...";
+
+        try {
+          const base64 = imageDataUrl.includes(",")
+            ? imageDataUrl.split(",")[1]
+            : imageDataUrl;
+
+          const resp = await fetch(`${API}/api/detect`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: base64 }),
+          });
+
+          if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.error || "Detection failed");
+          }
+
+          workspaceData = await resp.json();
+          const objs = workspaceData.workspace.objects;
+          const zones = workspaceData.workspace.safety_zones;
+
+          document.getElementById("objCount").textContent =
+            `${objs.length} objects, ${zones.length} zones`;
+          document.getElementById("btnPlan").disabled = false;
+
+          drawAnnotations(sourceImage, workspaceData);
+          updateSimWorkspace(workspaceData);
+        } catch (e) {
+          document.getElementById("objCount").textContent = "error";
+          alert("Detection error: " + e.message);
+        }
+
+        loader.classList.remove("active");
+        document.getElementById("btnScan").disabled = !stream;
+      }
+
+      // ============================================================
+      // ANNOTATION CANVAS
+      // ============================================================
+
+      const CAT_COLORS = {
+        kitchen: "#378ADD",
+        reading: "#5dca7b",
+        writing: "#d4537e",
+        electronics: "#5d9eca",
+        beverage: "#ef9f27",
+        tools: "#97c459",
+        other: "#888",
+      };
+
+      function drawAnnotations(imgSrc, data) {
+        document.getElementById("annotEmpty").style.display = "none";
+        const canvas = document.getElementById("annotated-canvas");
+        const ctx = canvas.getContext("2d");
+
+        const img = new Image();
+        img.onload = function () {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          canvas.style.display = "block";
+          ctx.drawImage(img, 0, 0);
+
+          const ws = data.workspace;
+          const w = img.width,
+            h = img.height;
+
+          for (const zone of ws.safety_zones) {
+            const pts = zone.polygon;
+            ctx.fillStyle = "rgba(226,75,74,0.18)";
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x * w, pts[0].y * h);
+            for (let i = 1; i < pts.length; i++)
+              ctx.lineTo(pts[i].x * w, pts[i].y * h);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = "#e24b4a";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = "#e24b4a";
+            ctx.font = "bold 14px system-ui";
+            ctx.fillText("SAFETY ZONE", pts[0].x * w + 8, pts[0].y * h + 20);
+          }
+
+          for (const obj of ws.objects) {
+            const bb = obj.bounding_box;
+            const x1 = bb.top_left.x * w,
+              y1 = bb.top_left.y * h;
+            const x2 = bb.bottom_right.x * w,
+              y2 = bb.bottom_right.y * h;
+            const color = CAT_COLORS[obj.category] || "#888";
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+            const label = `${obj.label} (${obj.confidence})`;
+            ctx.font = "12px system-ui";
+            const tm = ctx.measureText(label);
+            ctx.fillStyle = color;
+            ctx.fillRect(x1, y1 - 18, tm.width + 8, 18);
+            ctx.fillStyle = "white";
+            ctx.fillText(label, x1 + 4, y1 - 5);
+
+            const cx = obj.centroid.x * w,
+              cy = obj.centroid.y * h;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            if (obj.coord_source === "opencv") {
+              ctx.fillStyle = "rgba(93,202,123,0.7)";
+              ctx.font = "9px monospace";
+              ctx.fillText("opencv", x1 + 2, y2 - 3);
+            }
+          }
+        };
+        img.src = imgSrc;
+      }
+
+      // ============================================================
+      // PLANNING (Agent 2)
+      // ============================================================
+
+      async function generatePlan() {
+        const loader = document.getElementById("planLoader");
+        loader.classList.add("active");
+        document.getElementById("btnPlan").disabled = true;
+        document.getElementById("planStatus").textContent = "planning...";
+        document.getElementById("planEmpty").style.display = "none";
+
+        try {
+          const resp = await fetch(`${API}/api/plan`, { method: "POST" });
+          if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.error || "Planning failed");
+          }
+
+          planData = await resp.json();
+          renderSteps(planData);
+          document.getElementById("btnExec").disabled = false;
+          document.getElementById("planStatus").textContent =
+            `${planData.sequence.length} steps — ${planData.strategy || ""}`;
+        } catch (e) {
+          document.getElementById("planStatus").textContent = "error";
+          alert("Planning error: " + e.message);
+        }
+
+        loader.classList.remove("active");
+        document.getElementById("btnPlan").disabled = false;
+      }
+
+      function renderSteps(plan) {
+        const list = document.getElementById("stepsList");
+        list.innerHTML = "";
+
+        if (plan.reasoning) {
+          const r = document.createElement("div");
+          r.className = "log-line";
+          r.style.padding = "8px 10px";
+          r.style.marginBottom = "8px";
+          r.style.color = "var(--muted)";
+          r.style.fontStyle = "italic";
+          r.textContent = plan.reasoning;
+          list.appendChild(r);
+        }
+
+        for (const step of plan.sequence) {
+          const el = document.createElement("div");
+          el.className = "step-item";
+          el.id = `step-${step.step}`;
+          el.innerHTML = `
+            <div class="step-num">${step.step}</div>
+            <div class="step-text">
+                <div class="step-label">${step.object_id} → (${step.to.x.toFixed(2)}, ${step.to.y.toFixed(2)})</div>
+                <div class="step-reason">${step.reason || ""}</div>
+            </div>
+        `;
+          list.appendChild(el);
+        }
+      }
+
+      // ============================================================
+      // THREE.JS SIMULATION
+      // ============================================================
+
+      const simCanvas = document.getElementById("simCanvas");
+      let renderer,
+        scene,
+        camera,
+        armRoot,
+        turret,
+        seg1,
+        seg2,
+        wrist,
+        clawL,
+        clawR;
+      let simBlocks = [],
+        simZones = [];
+      let simPose = { base: 0, s1: 0.25, s2: -0.4 };
+      let clawSpread = 0.14;
+      let simHeld = null,
+        simSorting = false,
+        simStepIdx = -1;
+      let simPhase = "idle",
+        simPhaseT = 0,
+        simPFrom = {},
+        simPTo = {};
+      let simPlan = [],
+        simTime = 0;
+
+      const ARM1_LEN = 2.2,
+        ARM2_LEN = 1.8,
+        CLAW_LEN = 0.5;
+
+      function initSim() {
+        const W = simCanvas.clientWidth,
+          H = simCanvas.clientHeight;
+        renderer = new THREE.WebGLRenderer({
+          canvas: simCanvas,
+          antialias: true,
+        });
+        renderer.setSize(W, H);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.setClearColor(0x12131a);
+
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
+        camera.position.set(6, 11, 9);
+        camera.lookAt(0, 0, 0);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const dl = new THREE.DirectionalLight(0xffffff, 0.7);
+        dl.position.set(4, 10, 6);
+        dl.castShadow = true;
+        dl.shadow.mapSize.set(1024, 1024);
+        scene.add(dl);
+        scene.add(
+          new THREE.DirectionalLight(0x8888ff, 0.2)
+            .translateX(-4)
+            .translateY(6),
+        );
+
+        const tbl = new THREE.Mesh(
+          new THREE.BoxGeometry(10, 0.25, 7),
+          new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.8 }),
+        );
+        tbl.position.y = -0.125;
+        tbl.receiveShadow = true;
+        scene.add(tbl);
+
+        const grd = new THREE.GridHelper(10, 20, 0x3a3a5a, 0x252540);
+        grd.position.y = 0.01;
+        scene.add(grd);
+
+        buildArm();
+        animateSim();
+      }
+
+      function mm(c) {
+        return new THREE.MeshStandardMaterial({
+          color: c,
+          roughness: 0.5,
+          metalness: 0.1,
+        });
+      }
+
+      function buildArm() {
+        armRoot = new THREE.Group();
+        armRoot.position.set(-3.2, 0, -2.8);
+        scene.add(armRoot);
+
+        const base = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.55, 0.65, 0.35, 24),
+          mm(0x44445e),
+        );
+        base.position.y = 0.175;
+        base.castShadow = true;
+        armRoot.add(base);
+
+        turret = new THREE.Group();
+        turret.position.y = 0.35;
+        armRoot.add(turret);
+
+        const sj = new THREE.Mesh(
+          new THREE.SphereGeometry(0.22, 16, 16),
+          mm(0x8888aa),
+        );
+        sj.position.y = 0.1;
+        turret.add(sj);
+
+        seg1 = new THREE.Group();
+        seg1.position.y = 0.1;
+        turret.add(seg1);
+        const a1 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.1, 0.12, ARM1_LEN, 10),
+          mm(0x5a5a7a),
+        );
+        a1.position.y = ARM1_LEN / 2;
+        a1.castShadow = true;
+        seg1.add(a1);
+        const ej = new THREE.Mesh(
+          new THREE.SphereGeometry(0.17, 16, 16),
+          mm(0x8888aa),
+        );
+        ej.position.y = ARM1_LEN;
+        seg1.add(ej);
+
+        seg2 = new THREE.Group();
+        seg2.position.y = ARM1_LEN;
+        seg1.add(seg2);
+        const a2 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.08, 0.1, ARM2_LEN, 10),
+          mm(0x5a5a7a),
+        );
+        a2.position.y = ARM2_LEN / 2;
+        a2.castShadow = true;
+        seg2.add(a2);
+        const wj = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 12, 12),
+          mm(0x8888aa),
+        );
+        wj.position.y = ARM2_LEN;
+        seg2.add(wj);
+
+        wrist = new THREE.Group();
+        wrist.position.y = ARM2_LEN;
+        seg2.add(wrist);
+
+        const gMat = mm(0x5dca7b);
+        const palm = new THREE.Mesh(
+          new THREE.BoxGeometry(0.28, 0.12, 0.12),
+          gMat,
+        );
+        palm.position.y = 0.06;
+        wrist.add(palm);
+
+        function finger() {
+          const g = new THREE.Group();
+          const u = new THREE.Mesh(
+            new THREE.BoxGeometry(0.06, CLAW_LEN, 0.12),
+            gMat,
+          );
+          u.position.y = -CLAW_LEN / 2;
+          u.castShadow = true;
+          g.add(u);
+          const t = new THREE.Mesh(
+            new THREE.BoxGeometry(0.06, CLAW_LEN * 0.35, 0.08),
+            gMat,
+          );
+          t.position.set(0.04, -CLAW_LEN - CLAW_LEN * 0.13, 0);
+          t.rotation.z = 0.35;
+          g.add(t);
+          return g;
+        }
+        clawL = finger();
+        clawL.position.set(-0.14, 0, 0);
+        wrist.add(clawL);
+        clawR = finger();
+        clawR.position.set(0.14, 0, 0);
+        clawR.scale.x = -1;
+        wrist.add(clawR);
+      }
+
+      function setClawOpen(v) {
+        clawSpread = v;
+        clawL.position.x = -v;
+        clawR.position.x = v;
+      }
+
+      function normToWorld(nx, ny) {
+        return new THREE.Vector3((nx - 0.5) * 10, 0, (ny - 0.5) * 7);
+      }
+
+      function worldToArm(wx, wz) {
+        const dx = wx - armRoot.position.x,
+          dz = wz - armRoot.position.z;
+        return {
+          angle: Math.atan2(dx, dz),
+          dist: Math.sqrt(dx * dx + dz * dz),
+        };
+      }
+
+      function ikAngles(dist, ty) {
+        const L1 = ARM1_LEN,
+          L2 = ARM2_LEN + CLAW_LEN * 1.1;
+        const y = Math.max(0.3, ty) - 0.35;
+        const r = Math.min(dist, L1 + L2 - 0.3);
+        const d = Math.sqrt(r * r + y * y);
+        const cA = Math.acos(
+          Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d))),
+        );
+        const bA = Math.atan2(y, r);
+        const s1 = Math.PI / 2 - (cA + bA);
+        const cB = Math.acos(
+          Math.max(
+            -1,
+            Math.min(1, (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2)),
+          ),
+        );
+        return { s1, s2: -(Math.PI - cB) };
+      }
+
+      function getGripWorld() {
+        wrist.updateWorldMatrix(true, false);
+        const v = new THREE.Vector3();
+        wrist.getWorldPosition(v);
+        return v;
+      }
+
+      const C_MAP = {
+        kitchen: 0x378add,
+        reading: 0x5dca7b,
+        writing: 0xd4537e,
+        electronics: 0x5d9eca,
+        beverage: 0xef9f27,
+        tools: 0x97c459,
+        other: 0x888888,
+      };
+
+      function updateSimWorkspace(data) {
+        simBlocks.forEach((b) => scene.remove(b));
+        simBlocks = [];
+        simZones.forEach((z) => scene.remove(z));
+        simZones = [];
+
+        const ws = data.workspace;
+
+        for (const zone of ws.safety_zones) {
+          const pts = zone.polygon;
+          const xs = pts.map((p) => p.x),
+            ys = pts.map((p) => p.y);
+          const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+          const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+          const zw = (Math.max(...xs) - Math.min(...xs)) * 10;
+          const zh = (Math.max(...ys) - Math.min(...ys)) * 7;
+          const zMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(zw, zh),
+            new THREE.MeshStandardMaterial({
+              color: 0xe24b4a,
+              transparent: true,
+              opacity: 0.15,
+              side: THREE.DoubleSide,
+            }),
+          );
+          const wp = normToWorld(cx, cy);
+          zMesh.position.set(wp.x, 0.02, wp.z);
+          zMesh.rotation.x = -Math.PI / 2;
+          scene.add(zMesh);
+          simZones.push(zMesh);
+
+          const border = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(
+              pts.concat(pts[0]).map((p) => {
+                const v = normToWorld(p.x, p.y);
+                return new THREE.Vector3(v.x, 0.03, v.z);
+              }),
+            ),
+            new THREE.LineBasicMaterial({ color: 0xe24b4a }),
+          );
+          scene.add(border);
+          simZones.push(border);
+        }
+
+        for (const obj of ws.objects) {
+          const area = obj.area_ratio || 0.01;
+          const sz = Math.max(0.25, Math.min(0.8, Math.sqrt(area) * 5));
+          const color = C_MAP[obj.category] || 0x888888;
+          const mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(sz, sz * 0.7, sz),
+            mm(color),
+          );
+          const wp = normToWorld(obj.centroid.x, obj.centroid.y);
+          mesh.position.set(wp.x, sz * 0.35, wp.z);
+          mesh.castShadow = true;
+          mesh.userData = {
+            id: obj.id,
+            label: obj.label,
+            oy: sz * 0.35,
+            target: null,
+          };
+          scene.add(mesh);
+          simBlocks.push(mesh);
+        }
+      }
+
+      // ============================================================
+      // SIMULATION ANIMATION
+      // ============================================================
+
+      function executePlan() {
+        if (!planData || simSorting) return;
+        simPlan = planData.sequence;
+        simStepIdx = 0;
+        simSorting = true;
+        document.getElementById("simStatus").textContent = "executing";
+        document.getElementById("simStatus").style.color = "var(--amber)";
+        beginSimStep();
+      }
+
+      function beginSimStep() {
+        if (simStepIdx >= simPlan.length) {
+          simSorting = false;
+          simPhase = "idle";
+          document.getElementById("simStatus").textContent = "complete";
+          document.getElementById("simStatus").style.color = "var(--green)";
+          document
+            .querySelectorAll(".step-item")
+            .forEach((e) => e.classList.remove("active"));
+          return;
+        }
+
+        const step = simPlan[simStepIdx];
+        const block = simBlocks.find((b) => b.userData.id === step.object_id);
+        if (!block) {
+          simStepIdx++;
+          beginSimStep();
+          return;
+        }
+
+        const tgt = normToWorld(step.to.x, step.to.y);
+        block.userData.target = tgt;
+
+        document
+          .querySelectorAll(".step-item")
+          .forEach((e) => e.classList.remove("active"));
+        const stepEl = document.getElementById(`step-${step.step}`);
+        if (stepEl) {
+          stepEl.classList.add("active");
+          stepEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+
+        const pa = worldToArm(block.position.x, block.position.z);
+        const ik = ikAngles(pa.dist, block.position.y + 0.1);
+        setSimPhase(
+          "reachAbove",
+          { base: simPose.base, s1: simPose.s1, s2: simPose.s2 },
+          { base: pa.angle, s1: Math.min(ik.s1 + 0.15, 1.2), s2: ik.s2 + 0.1 },
+          block,
+        );
+      }
+
+      function setSimPhase(p, from, to, block) {
+        simPhase = p;
+        simPhaseT = 0;
+        simPFrom = from;
+        simPTo = to;
+        if (block) simPFrom._block = block;
+      }
+
+      function sm(t) {
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      }
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+
+      function advanceSimPhase() {
+        const block = simPFrom._block || simBlocks[0];
+        const step = simPlan[simStepIdx];
+        const tgt = block.userData.target;
+
+        if (simPhase === "reachAbove") {
+          const pa = worldToArm(block.position.x, block.position.z);
+          const ik = ikAngles(pa.dist, block.position.y);
+          setSimPhase(
+            "descend",
+            { s1: simPose.s1, s2: simPose.s2 },
+            { s1: ik.s1, s2: ik.s2 },
+            block,
+          );
+        } else if (simPhase === "descend") {
+          setSimPhase("grab", { clw: clawSpread }, { clw: 0.05 }, block);
+        } else if (simPhase === "grab") {
+          simHeld = block;
+          setSimPhase(
+            "liftUp",
+            { s1: simPose.s1, s2: simPose.s2 },
+            { s1: 0.2, s2: -0.25 },
+            block,
+          );
+        } else if (simPhase === "liftUp") {
+          const ta = worldToArm(tgt.x, tgt.z);
+          setSimPhase(
+            "swing",
+            { base: simPose.base },
+            { base: ta.angle },
+            block,
+          );
+        } else if (simPhase === "swing") {
+          const ta = worldToArm(tgt.x, tgt.z);
+          const ik = ikAngles(ta.dist, block.userData.oy);
+          setSimPhase(
+            "lowerTo",
+            { s1: simPose.s1, s2: simPose.s2 },
+            { s1: ik.s1, s2: ik.s2 },
+            block,
+          );
+        } else if (simPhase === "lowerTo") {
+          block.position.set(tgt.x, block.userData.oy, tgt.z);
+          simHeld = null;
+          setSimPhase("release", { clw: clawSpread }, { clw: 0.14 }, block);
+        } else if (simPhase === "release") {
+          setSimPhase(
+            "retract",
+            { s1: simPose.s1, s2: simPose.s2 },
+            { s1: 0.25, s2: -0.4 },
+            block,
+          );
+        } else if (simPhase === "retract") {
+          const stepEl = document.getElementById(`step-${step.step}`);
+          if (stepEl) stepEl.classList.add("done");
+          simStepIdx++;
+          simPhase = "pause";
+          setTimeout(beginSimStep, 300);
+        }
+      }
+
+      function animateSim() {
+        requestAnimationFrame(animateSim);
+        const dt = 0.016;
+        simTime += dt;
+
+        if (simSorting && simPhase !== "idle" && simPhase !== "pause") {
+          simPhaseT = Math.min(1, simPhaseT + dt * 1.8);
+          const e = sm(simPhaseT);
+
+          if (simPFrom.base !== undefined && simPTo.base !== undefined)
+            simPose.base = lerp(simPFrom.base, simPTo.base, e);
+          if (simPFrom.s1 !== undefined && simPTo.s1 !== undefined)
+            simPose.s1 = lerp(simPFrom.s1, simPTo.s1, e);
+          if (simPFrom.s2 !== undefined && simPTo.s2 !== undefined)
+            simPose.s2 = lerp(simPFrom.s2, simPTo.s2, e);
+          if (simPFrom.clw !== undefined && simPTo.clw !== undefined)
+            setClawOpen(lerp(simPFrom.clw, simPTo.clw, e));
+
+          if (simPhaseT >= 1) advanceSimPhase();
+        }
+
+        turret.rotation.y = simPose.base;
+        seg1.rotation.x = -simPose.s1;
+        seg2.rotation.x = -simPose.s2;
+
+        if (simHeld) {
+          const gp = getGripWorld();
+          simHeld.position.set(gp.x, gp.y - CLAW_LEN - 0.1, gp.z);
+        }
+
+        simZones.forEach((z) => {
+          if (z.material && z.material.opacity !== undefined)
+            z.material.opacity = 0.12 + 0.04 * Math.sin(simTime * 3);
+        });
+
+        const ca = simTime * 0.06;
+        camera.position.set(Math.sin(ca) * 11, 10, Math.cos(ca) * 9);
+        camera.lookAt(0, 1, 0);
+
+        renderer.render(scene, camera);
+      }
+
+      // ============================================================
+      // UNITY STATUS POLLING
+      // ============================================================
+
+      async function pollUnity() {
+        try {
+          const resp = await fetch(`${API}/api/state`);
+          const data = await resp.json();
+          const dot = document.getElementById("unityDot");
+          const stat = document.getElementById("unityStatus");
+          if (data.unity_connected) {
+            dot.style.background = "var(--green)";
+            stat.textContent = "unity: connected";
+          } else {
+            dot.style.background = "var(--red)";
+            stat.textContent = "unity: disconnected";
+          }
+        } catch (e) {}
+      }
+      setInterval(pollUnity, 3000);
+
+      // ============================================================
+      // INIT
+      // ============================================================
+
+      window.addEventListener("resize", () => {
+        if (renderer) {
+          const W = simCanvas.clientWidth,
+            H = simCanvas.clientHeight;
+          renderer.setSize(W, H);
+          camera.aspect = W / H;
+          camera.updateProjectionMatrix();
+        }
+      });
+
+      initSim();
+      pollUnity();
+    </script>
+  </body>
+</html>
