@@ -274,7 +274,7 @@ def detect_objects_hybrid(image_source, status_callback=None):
         [DETECTION_PROMPT, img_pil],
         generation_config=genai.GenerationConfig(
             temperature=0.0,
-            max_output_tokens=2048,
+            max_output_tokens=8192,
         ),
     )
 
