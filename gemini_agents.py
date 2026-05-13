@@ -49,11 +49,23 @@ def _get_client():
 
 
 def _parse_json_response(text):
+    original = text
     text = text.strip()
-    text = re.sub(r'^```json\s*', '', text)
-    text = re.sub(r'^```\s*', '', text)
-    text = re.sub(r'\s*```$', '', text)
-    return json.loads(text)
+    # Extract JSON from markdown fences if present
+    fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
+    if fence_match:
+        text = fence_match.group(1).strip()
+    else:
+        # Fall back to extracting the outermost JSON object or array
+        obj_match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
+        if obj_match:
+            text = obj_match.group(1)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        print(f"  [DEBUG] JSON parse failed: {e}")
+        print(f"  [DEBUG] Raw Gemini response (first 500 chars):\n{original}")
+        raise
 
 
 # ================================================================
@@ -261,7 +273,7 @@ def detect_objects_hybrid(image_source, status_callback=None):
     response = model.generate_content(
         [DETECTION_PROMPT, img_pil],
         generation_config=genai.GenerationConfig(
-            temperature=0.1,
+            temperature=0.0,
             max_output_tokens=2048,
         ),
     )
@@ -443,8 +455,8 @@ def plan_sorting(workspace_data, status_callback=None):
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                temperature=0.2,
-                max_output_tokens=2048,
+                temperature=0.0,
+                max_output_tokens=4096,
             ),
         )
         plan = _parse_json_response(response.text)
