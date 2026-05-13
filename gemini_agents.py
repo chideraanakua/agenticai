@@ -30,7 +30,7 @@ from io import BytesIO
 from dotenv import load_dotenv
 load_dotenv()
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL")
 _client = None
 
 
@@ -463,12 +463,113 @@ def plan_sorting(workspace_data, status_callback=None):
         return _heuristic_plan(objects, safety_zones)
 
 
-def _heuristic_plan(objects, safety_zones):
-    """Fallback: group by category, place left of safety zones."""
-    safe_x_max = 0.60
+def _compute_safe_area(safety_zones):
+    """
+    Determines the safe rectangular region by detecting which side of
+    the workspace each safety zone occupies.
+
+    A zone at the bottom shrinks safe_y_max.
+    A zone on the right shrinks safe_x_max.
+    A zone on the left grows safe_x_min.
+    A zone at the top grows safe_y_min.
+
+    This prevents the bug where a bottom-side zone (e.g. human feet)
+    was incorrectly shrinking the x boundary.
+    """
+    safe_x_min, safe_x_max = 0.02, 0.95
+    safe_y_min, safe_y_max = 0.02, 0.95
+
     for zone in safety_zones:
-        for pt in zone.get("polygon", []):
-            safe_x_max = min(safe_x_max, pt["x"] - 0.08)
+        pts = zone.get("polygon", [])
+        if not pts:
+            continue
+
+        zx_min = min(p["x"] for p in pts)
+        zx_max = max(p["x"] for p in pts)
+        zy_min = min(p["y"] for p in pts)
+        zy_max = max(p["y"] for p in pts)
+        zcx = (zx_min + zx_max) / 2
+        zcy = (zy_min + zy_max) / 2
+
+        if zcy > 0.55 and zy_min > 0.35:
+            # Zone is at the bottom — shrink safe y ceiling
+            safe_y_max = min(safe_y_max, zy_min - 0.06)
+        elif zcy < 0.45 and zy_max < 0.65:
+            # Zone is at the top — raise safe y floor
+            safe_y_min = max(safe_y_min, zy_max + 0.06)
+
+        if zcx > 0.55 and zx_min > 0.35:
+            # Zone is on the right — shrink safe x ceiling
+            safe_x_max = min(safe_x_max, zx_min - 0.06)
+        elif zcx < 0.45 and zx_max < 0.65:
+            # Zone is on the left — raise safe x floor
+            safe_x_min = max(safe_x_min, zx_max + 0.06)
+
+    # Clamp to valid workspace bounds
+    safe_x_min = max(0.02, min(safe_x_min, 0.5))
+    safe_x_max = min(0.98, max(safe_x_max, safe_x_min + 0.2))
+    safe_y_min = max(0.02, min(safe_y_min, 0.5))
+    safe_y_max = min(0.98, max(safe_y_max, safe_y_min + 0.2))
+
+    return safe_x_min, safe_x_max, safe_y_min, safe_y_max
+
+
+def _generate_grid_positions(n, safe_x_min, safe_x_max, safe_y_min, safe_y_max):
+    """
+    Generates n unique non-overlapping target positions arranged in a grid
+    within the safe area. Objects are spaced at least MIN_SPACING apart.
+    """
+    MIN_SPACING = 0.11
+    avail_w = safe_x_max - safe_x_min
+    avail_h = safe_y_max - safe_y_min
+
+    cols = max(1, int(avail_w / MIN_SPACING))
+    rows = max(1, int(avail_h / MIN_SPACING))
+
+    col_step = avail_w / cols
+    row_step = avail_h / rows
+
+    positions = []
+    for row in range(rows):
+        for col in range(cols):
+            x = safe_x_min + col * col_step + col_step * 0.5
+            y = safe_y_min + row * row_step + row_step * 0.5
+            positions.append({
+                "x": round(min(x, safe_x_max - 0.02), 4),
+                "y": round(min(y, safe_y_max - 0.02), 4),
+            })
+            if len(positions) >= n:
+                return positions
+
+    # If grid ran out of cells, extend by adding more rows
+    extra_row = rows
+    while len(positions) < n:
+        for col in range(cols):
+            x = safe_x_min + col * col_step + col_step * 0.5
+            y = safe_y_min + extra_row * row_step + row_step * 0.5
+            positions.append({
+                "x": round(min(x, safe_x_max - 0.02), 4),
+                "y": round(min(y, 0.97), 4),
+            })
+            if len(positions) >= n:
+                return positions
+        extra_row += 1
+        if extra_row > 20:
+            break
+
+    return positions
+
+
+def _heuristic_plan(objects, safety_zones):
+    """
+    Fallback planner: group by category, assign unique non-overlapping
+    grid positions within the computed safe area.
+    """
+    sx_min, sx_max, sy_min, sy_max = _compute_safe_area(safety_zones)
+
+    positions = _generate_grid_positions(
+        len(objects), sx_min, sx_max, sy_min, sy_max
+    )
 
     categories = {}
     for obj in objects:
@@ -480,16 +581,25 @@ def _heuristic_plan(objects, safety_zones):
     sequence = []
     clusters = []
     step_num = 1
-    y_slot = 0.12
+    pos_idx = 0
 
     for cat_name, cat_objects in categories.items():
-        target_x = 0.10
         members = []
+        cluster_anchor = (
+            positions[pos_idx] if pos_idx < len(positions)
+            else {"x": sx_min + 0.05, "y": sy_min + 0.05}
+        )
+
         for obj in cat_objects:
-            target = {
-                "x": round(min(target_x, safe_x_max), 4),
-                "y": round(y_slot, 4),
-            }
+            if pos_idx < len(positions):
+                target = positions[pos_idx]
+                pos_idx += 1
+            else:
+                target = {
+                    "x": round(sx_min + 0.05, 4),
+                    "y": round(sy_min + step_num * 0.06, 4),
+                }
+
             sequence.append({
                 "step": step_num,
                 "action": "pick_and_place",
@@ -499,22 +609,21 @@ def _heuristic_plan(objects, safety_zones):
                 "reason": f"Group {cat_name} items",
             })
             members.append(obj["id"])
-            target_x += 0.12
             step_num += 1
 
         clusters.append({
             "cluster_id": cat_name,
             "label": f"{cat_name.capitalize()} items",
-            "target_zone": {"x": 0.10, "y": round(y_slot, 4)},
+            "target_zone": cluster_anchor,
             "members": members,
         })
-        y_slot += 0.25
 
     return {
         "strategy": "heuristic_category_grouping",
         "reasoning": (
-            f"Grouped {len(categories)} categories. "
-            f"All targets left of x={safe_x_max:.2f}."
+            f"Grouped {len(categories)} categories into safe area "
+            f"x=[{sx_min:.2f}, {sx_max:.2f}] y=[{sy_min:.2f}, {sy_max:.2f}]. "
+            f"Each object assigned a unique grid position."
         ),
         "clusters": clusters,
         "sequence": sequence,
