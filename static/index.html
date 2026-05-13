@@ -307,6 +307,63 @@
         border-top: 1px solid var(--border);
         flex-shrink: 0;
       }
+      .tag-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 8px 12px;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+        min-height: 42px;
+        max-height: 90px;
+        overflow-y: auto;
+        background: var(--surface);
+      }
+      .obj-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 9px 3px 5px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 500;
+        border: 1px solid;
+        cursor: default;
+        white-space: nowrap;
+        transition: opacity 0.2s;
+      }
+      .obj-tag:hover {
+        opacity: 0.8;
+      }
+      .tag-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .tag-num {
+        font-family: var(--mono);
+        font-size: 10px;
+        opacity: 0.7;
+      }
+      .tag-source {
+        font-size: 9px;
+        opacity: 0.6;
+        font-family: var(--mono);
+      }
+      .zone-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 9px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 500;
+        background: rgba(226, 75, 74, 0.12);
+        color: #e24b4a;
+        border: 1px solid rgba(226, 75, 74, 0.3);
+        white-space: nowrap;
+      }
     </style>
   </head>
   <body>
@@ -400,6 +457,7 @@
             <div>Scan a workspace to see detections</div>
           </div>
         </div>
+        <div class="tag-strip" id="tagStrip" style="display: none"></div>
       </div>
 
       <!-- Panel 3: Sorting Plan -->
@@ -619,6 +677,7 @@
           const w = img.width,
             h = img.height;
 
+          // --- Safety zones ---
           for (const zone of ws.safety_zones) {
             const pts = zone.polygon;
             ctx.fillStyle = "rgba(226,75,74,0.18)";
@@ -628,19 +687,29 @@
               ctx.lineTo(pts[i].x * w, pts[i].y * h);
             ctx.closePath();
             ctx.fill();
-
             ctx.strokeStyle = "#e24b4a";
             ctx.lineWidth = 2;
             ctx.setLineDash([8, 4]);
             ctx.stroke();
             ctx.setLineDash([]);
 
-            ctx.fillStyle = "#e24b4a";
-            ctx.font = "bold 14px system-ui";
-            ctx.fillText("SAFETY ZONE", pts[0].x * w + 8, pts[0].y * h + 20);
+            // Safety zone label pill
+            const lx = pts[0].x * w + 8,
+              ly = pts[0].y * h + 22;
+            ctx.fillStyle = "rgba(226,75,74,0.85)";
+            const lw = 105,
+              lh = 20,
+              lr = 4;
+            ctx.beginPath();
+            ctx.roundRect(lx, ly - 15, lw, lh, lr);
+            ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.font = "bold 11px system-ui";
+            ctx.fillText("⚠ SAFETY ZONE", lx + 6, ly - 1);
           }
 
-          for (const obj of ws.objects) {
+          // --- Objects: clean numbered marker only on canvas ---
+          ws.objects.forEach((obj, idx) => {
             const bb = obj.bounding_box;
             const x1 = bb.top_left.x * w,
               y1 = bb.top_left.y * h;
@@ -648,33 +717,78 @@
               y2 = bb.bottom_right.y * h;
             const color = CAT_COLORS[obj.category] || "#888";
 
+            // Bounding box
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
             ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-            const label = `${obj.label} (${obj.confidence})`;
-            ctx.font = "12px system-ui";
-            const tm = ctx.measureText(label);
-            ctx.fillStyle = color;
-            ctx.fillRect(x1, y1 - 18, tm.width + 8, 18);
-            ctx.fillStyle = "white";
-            ctx.fillText(label, x1 + 4, y1 - 5);
-
-            const cx = obj.centroid.x * w,
-              cy = obj.centroid.y * h;
+            // Number badge — clean, small, always legible
+            const num = String(idx + 1);
+            const r = 12;
+            const bx = x1 + r,
+              by = y1 + r;
             ctx.beginPath();
-            ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+            ctx.arc(bx, by, r, 0, Math.PI * 2);
             ctx.fillStyle = color;
             ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.font = `bold 12px system-ui`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(num, bx, by);
+            ctx.textAlign = "left";
+            ctx.textBaseline = "alphabetic";
 
+            // Coord source micro-badge
             if (obj.coord_source === "opencv") {
-              ctx.fillStyle = "rgba(93,202,123,0.7)";
+              ctx.fillStyle = "rgba(0,0,0,0.55)";
+              ctx.beginPath();
+              ctx.roundRect(x2 - 44, y2 - 15, 42, 13, 3);
+              ctx.fill();
+              ctx.fillStyle = "#5dca7b";
               ctx.font = "9px monospace";
-              ctx.fillText("opencv", x1 + 2, y2 - 3);
+              ctx.textAlign = "right";
+              ctx.fillText("cv2", x2 - 3, y2 - 5);
+              ctx.textAlign = "left";
             }
-          }
+          });
         };
         img.src = imgSrc;
+
+        // Build tag strip
+        renderTagStrip(data.workspace);
+      }
+
+      function renderTagStrip(ws) {
+        const strip = document.getElementById("tagStrip");
+        strip.innerHTML = "";
+        strip.style.display = "flex";
+
+        ws.objects.forEach((obj, idx) => {
+          const color = CAT_COLORS[obj.category] || "#888";
+          const tag = document.createElement("span");
+          tag.className = "obj-tag";
+          tag.style.cssText = `
+            background: ${color}1a;
+            border-color: ${color}55;
+            color: ${color};
+        `;
+          tag.innerHTML = `
+            <span class="tag-dot" style="background:${color}"></span>
+            <span class="tag-num">${idx + 1}</span>
+            <span style="color:var(--text)">${obj.label.replace(/_/g, " ")}</span>
+            <span style="color:var(--muted);font-size:10px">${obj.category}</span>
+            <span class="tag-source">${obj.coord_source === "opencv" ? "cv2" : "~"}</span>
+        `;
+          strip.appendChild(tag);
+        });
+
+        for (const zone of ws.safety_zones) {
+          const tag = document.createElement("span");
+          tag.className = "zone-tag";
+          tag.textContent = `⚠ ${zone.label || "human"}`;
+          strip.appendChild(tag);
+        }
       }
 
       // ============================================================
@@ -713,25 +827,31 @@
         const list = document.getElementById("stepsList");
         list.innerHTML = "";
 
+        // Build id→label map from workspace if available
+        const labelMap = {};
+        if (workspaceData) {
+          workspaceData.workspace.objects.forEach((o) => {
+            labelMap[o.id] = o.label.replace(/_/g, " ");
+          });
+        }
+
         if (plan.reasoning) {
           const r = document.createElement("div");
-          r.className = "log-line";
-          r.style.padding = "8px 10px";
-          r.style.marginBottom = "8px";
-          r.style.color = "var(--muted)";
-          r.style.fontStyle = "italic";
+          r.style.cssText =
+            "padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--muted);font-style:italic;border-left:2px solid var(--border);padding-left:10px";
           r.textContent = plan.reasoning;
           list.appendChild(r);
         }
 
         for (const step of plan.sequence) {
+          const label = labelMap[step.object_id] || step.object_id;
           const el = document.createElement("div");
           el.className = "step-item";
           el.id = `step-${step.step}`;
           el.innerHTML = `
             <div class="step-num">${step.step}</div>
             <div class="step-text">
-                <div class="step-label">${step.object_id} → (${step.to.x.toFixed(2)}, ${step.to.y.toFixed(2)})</div>
+                <div class="step-label">${label} → (${step.to.x.toFixed(2)}, ${step.to.y.toFixed(2)})</div>
                 <div class="step-reason">${step.reason || ""}</div>
             </div>
         `;
