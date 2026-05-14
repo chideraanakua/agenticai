@@ -512,7 +512,6 @@ def plan_sorting(workspace_data, status_callback=None):
             f"Gemini plan: {len(plan['sequence'])} steps, "
             f"strategy: {plan.get('strategy', 'unknown')}"
         )
-        return plan
 
     except Exception as e:
         status(f"Gemini planning failed ({e}), using heuristic")
