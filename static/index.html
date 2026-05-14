@@ -557,7 +557,9 @@
           document.getElementById("btnScan").disabled = false;
           overlay.classList.add("hidden");
         } catch (e) {
-          alert('Camera access denied. Use "Upload photo" instead.');
+          const overlay = document.getElementById("cameraOverlay");
+          overlay.classList.remove("hidden");
+          overlay.innerHTML = `<div style="color:var(--red);font-size:13px">Camera access denied</div><div style="color:var(--muted);font-size:11px;margin-top:4px">Use "Upload photo" instead</div>`;
         }
       }
 
@@ -638,7 +640,8 @@
           updateSimWorkspace(workspaceData);
         } catch (e) {
           document.getElementById("objCount").textContent = "error";
-          alert("Detection error: " + e.message);
+          document.getElementById("objCount").style.color = "var(--red)";
+          console.error("Detection error:", e.message);
         }
 
         loader.classList.remove("active");
@@ -819,8 +822,8 @@
           document.getElementById("planStatus").textContent =
             `${planData.sequence.length} steps — ${planData.strategy || ""}`;
         } catch (e) {
-          document.getElementById("planStatus").textContent = "error";
-          alert("Planning error: " + e.message);
+          document.getElementById("planStatus").style.color = "var(--red)";
+          document.getElementById("planStatus").textContent = "error: " + e.message;
         }
 
         loader.classList.remove("active");
