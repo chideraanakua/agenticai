@@ -102,9 +102,9 @@ def _parse_json_response(text):
 
 DETECTION_PROMPT = """You are a workspace object detection system for a robotic sorting pipeline.
 
-Analyze this overhead photo of a workspace surface (table/desk).
+Analyze this overhead photo of a workspace (table, floor, lab bench, shelf, or any surface).
 
-For EACH distinct object ON the surface, provide:
+For EACH distinct movable object in the scene, provide:
 1. A short descriptive label (e.g., "saucepan", "tv_remote", "cookbook", "glasses", "pen")
 2. A category: kitchen, reading, electronics, writing, tools, beverage, or other
 3. An APPROXIMATE bounding box as normalized coordinates (0.0 to 1.0)
@@ -113,8 +113,7 @@ For EACH distinct object ON the surface, provide:
 Also identify any humans or human body parts visible (hands, arms, feet, legs).
 
 RULES:
-- Only detect objects ON the workspace surface, not the table itself
-- Do NOT detect furniture around the table (couches, chairs, shelves)
+- Detect movable objects only — not the surface itself, fixed furniture, walls, or floors
 - Give your best estimate for bounding boxes — they do not need to be perfect
 - Be specific with labels: "jim_beam_bottle" not just "bottle"
 
