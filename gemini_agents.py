@@ -275,7 +275,8 @@ def detect_objects_hybrid(image_source, status_callback=None):
     def status(msg):
         if status_callback:
             status_callback(msg)
-        print(f"  [DETECT] {msg}")
+        else:
+            print(f"[DETECT] {msg}")
 
     status("Loading image...")
     if isinstance(image_source, str) and os.path.isfile(image_source):
@@ -377,9 +378,24 @@ def detect_objects_hybrid(image_source, status_callback=None):
         })
         zone_counter += 1
 
+    # Robot base sits at the back-left corner of the table.
+    # Normalized coords: arm root ≈ (0.18, 0.10) → guard a box around it.
+    safety_zones.append({
+        "id": "zone_robot_base",
+        "type": "robot_base",
+        "label": "robot base",
+        "polygon": [
+            {"x": 0.05, "y": 0.0},
+            {"x": 0.31, "y": 0.0},
+            {"x": 0.31, "y": 0.26},
+            {"x": 0.05, "y": 0.26},
+        ],
+        "risk_level": "high",
+    })
+
     status(
         f"Detection complete: {len(objects)} objects, "
-        f"{len(safety_zones)} safety zones"
+        f"{len(safety_zones)} safety zones (incl. robot base)"
     )
 
     return {
