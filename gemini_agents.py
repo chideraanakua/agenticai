@@ -625,8 +625,12 @@ def _enforce_safety(plan, safety_zones):
 
         dest_unsafe = _in_any_zone(to["x"], to["y"], safety_zones)
         path_unsafe = _path_crosses_any_zone(fx, fy, to["x"], to["y"], safety_zones)
+        dest_occupied = any(
+            abs(to["x"] - p["x"]) < 0.08 and abs(to["y"] - p["y"]) < 0.08
+            for p in used
+        )
 
-        if dest_unsafe or path_unsafe:
+        if dest_unsafe or path_unsafe or dest_occupied:
             placed = False
             for cand in safe_candidates:
                 if any(
