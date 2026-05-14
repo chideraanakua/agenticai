@@ -30,7 +30,7 @@ from io import BytesIO
 from dotenv import load_dotenv
 load_dotenv()
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 _client = None
 
 
