@@ -48,23 +48,51 @@ def _get_client():
     return _client
 
 
+def _repair_json(text):
+    """
+    Best-effort repair for common Gemini JSON issues:
+    - Trailing commas before } or ]
+    - Truncated response: close any unclosed brackets/braces
+    """
+    # Remove trailing commas
+    text = re.sub(r',\s*([}\]])', r'\1', text)
+
+    # If truncated mid-response, close open structures
+    open_braces = text.count('{') - text.count('}')
+    open_brackets = text.count('[') - text.count(']')
+    # Strip any dangling partial token at the end (incomplete string or value)
+    text = re.sub(r',?\s*"[^"]*$', '', text)   # incomplete key
+    text = re.sub(r',?\s*\{[^}]*$', '', text)   # incomplete nested object
+    if open_brackets > 0:
+        text += ']' * open_brackets
+    if open_braces > 0:
+        text += '}' * open_braces
+    return text
+
+
 def _parse_json_response(text):
     original = text
     text = text.strip()
-    # Extract JSON from markdown fences if present
     fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
     if fence_match:
         text = fence_match.group(1).strip()
     else:
-        # Fall back to extracting the outermost JSON object or array
         obj_match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
         if obj_match:
             text = obj_match.group(1)
+
+    # First attempt: parse as-is
     try:
         return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Second attempt: after repair
+    try:
+        return json.loads(_repair_json(text))
     except json.JSONDecodeError as e:
-        print(f"  [DEBUG] JSON parse failed: {e}")
-        print(f"  [DEBUG] Raw Gemini response (first 500 chars):\n{original}")
+        print(f"  [DEBUG] JSON parse failed after repair: {e}")
+        print(f"  [DEBUG] Raw Gemini response ({len(original)} chars):\n{original[:1000]}")
         raise
 
 
