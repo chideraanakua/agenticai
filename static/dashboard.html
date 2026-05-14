@@ -423,7 +423,7 @@ async function openDetail(sid) {
       const skipped = step.skip ? "skipped" : "";
       html += `<div class="plan-step ${skipped}">
         <span class="step-num">#${step.step ?? i + 1}</span>
-        <span class="step-obj">${step.object_id ?? "?"}</span>
+        <span class="step-obj">${step.object_label ?? step.object_id ?? "?"}</span>
         → <span class="step-to">(${(step.to?.x ?? 0).toFixed(2)}, ${(step.to?.y ?? 0).toFixed(2)})</span>
         ${step.skip ? '<span class="badge badge-red" style="margin-left:6px">skipped</span>' : ''}
         ${step.reason ? `<div class="step-reason">${step.reason}</div>` : ""}

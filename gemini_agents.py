@@ -522,6 +522,11 @@ def plan_sorting(workspace_data, status_callback=None):
         status(f"Safety enforcement: relocated {relocated} target(s) outside safety zones")
     if skipped:
         status(f"Safety enforcement: skipped {skipped} step(s) — no safe path available")
+
+    label_map = {o["id"]: o["label"] for o in objects}
+    for step in plan.get("sequence", []):
+        step.setdefault("object_label", label_map.get(step.get("object_id"), "unknown"))
+
     return plan
 
 
