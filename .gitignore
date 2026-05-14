@@ -4,3 +4,4 @@ team-onboarding.md
 __pycache__
 .venv/
 .DS_Store
+sessions.db
