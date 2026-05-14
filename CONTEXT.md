@@ -58,9 +58,16 @@ Camera / Upload
 
 ## Changelog
 
-### 2026-05-13
-- Full codebase analyzed and documented: FastAPI backend, Gemini + OpenCV hybrid detection, safety-aware planner, Three.js sim, SQLite session tracking, Chart.js dashboard
-- Two-agent pipeline fully implemented and working
+### 2026-05-13 — Pre-demo fixes
+- **Bug fix:** Safety enforcement (`_enforce_safety()`) was skipped when Gemini succeeded — it only ran on the heuristic fallback path. Fixed so it always runs.
+- **Bug fix:** `GEMINI_MODEL` had no default; crashes if env var missing. Now defaults to `gemini-2.5-flash`.
+- **Fix:** Confidence scores were hardcoded to 0.92/0.78. Now derived from OpenCV `coverage` ratio — varies per object.
+- **Fix:** Detection prompt was scoped to "table/desk". Generalized to any workspace scene, movable objects only.
+- **Fix:** `alert()` popups on errors replaced with inline red status text in each panel.
+- **Feat:** Live server log polling during Gemini calls — `/api/state` polled every 800ms, streamed into UI status elements.
+
+### 2026-05-13 — Initial state
+- Two-agent pipeline fully implemented: Gemini + OpenCV hybrid detection, Gemini spatial planner with heuristic fallback, safety enforcement
 - **Unity dropped** — Three.js is now the sole simulation layer; `unity_scripts/` and `/ws/unity` WebSocket are dead code (kept for backward compat)
 - Dashboard with session review, per-session detail modal, and rating submission implemented
 - CONTEXT.md and CLAUDE.md created
