@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Phantom Limb — Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #1a1d27;
+    --border: #2a2d3a;
+    --accent: #5b8af5;
+    --green: #3ddc84;
+    --yellow: #f5c518;
+    --red: #e24b4a;
+    --text: #e2e8f0;
+    --muted: #6b7280;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px; border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.03em; }
+  header a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  header a:hover { text-decoration: underline; }
+
+  .main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+
+  /* Stats bar */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px;
+  }
+  .stat-card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .stat-card .value { font-size: 28px; font-weight: 700; }
+  .stat-card .value.green { color: var(--green); }
+  .stat-card .value.yellow { color: var(--yellow); }
+  .stat-card .value.accent { color: var(--accent); }
+
+  /* Chart */
+  .chart-panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 24px;
+  }
+  .chart-panel h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px; }
+  .chart-panel canvas { max-height: 200px; }
+
+  /* Sessions table */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .section-header h2 { font-size: 14px; font-weight: 600; }
+  .refresh-btn {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+  th { text-align: left; padding: 10px 14px; background: #15182200; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.025); }
+
+  .badge {
+    display: inline-block; padding: 2px 7px; border-radius: 4px;
+    font-size: 11px; font-weight: 500;
+  }
+  .badge-red { background: rgba(226,75,74,0.18); color: var(--red); }
+  .badge-green { background: rgba(61,220,132,0.15); color: var(--green); }
+  .badge-muted { background: rgba(107,114,128,0.2); color: var(--muted); }
+
+  /* Stars */
+  .stars { display: flex; gap: 2px; align-items: center; cursor: pointer; }
+  .stars .star { font-size: 17px; color: #3a3d4d; transition: color 0.1s; user-select: none; }
+  .stars .star.filled { color: var(--yellow); }
+  .stars .star:hover { color: #f5c518aa; }
+
+  /* Comment input (shown inline on row) */
+  .comment-cell { max-width: 200px; }
+  .comment-text { color: var(--muted); font-style: italic; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; display: inline-block; }
+  .comment-edit { display: none; width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px 6px; font-size: 12px; }
+
+  /* Detail panel */
+  .detail-link { color: var(--accent); cursor: pointer; font-size: 12px; }
+  .detail-link:hover { text-decoration: underline; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; width: 680px; max-width: 95vw;
+    max-height: 85vh; overflow-y: auto;
+  }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .modal-header h3 { font-size: 15px; font-weight: 600; }
+  .modal-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
+  .modal-close:hover { color: var(--text); }
+
+  .plan-step {
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; margin-bottom: 8px; font-size: 12px;
+  }
+  .plan-step.skipped { opacity: 0.5; border-color: var(--red); }
+  .plan-step .step-num { color: var(--muted); margin-right: 6px; }
+  .plan-step .step-obj { font-weight: 600; color: var(--accent); }
+  .plan-step .step-to { color: var(--green); }
+  .plan-step .step-reason { color: var(--muted); font-style: italic; margin-top: 4px; }
+
+  .empty-state { text-align: center; color: var(--muted); padding: 48px 0; }
+  .empty-state p { margin-top: 8px; font-size: 13px; }
+
+  .ts { color: var(--muted); font-size: 12px; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Phantom Limb &mdash; Performance Dashboard</h1>
+  <a href="/">← Back to simulator</a>
+</header>
+
+<div class="main">
+
+  <div class="stats" id="statsBar">
+    <div class="stat-card"><div class="label">Total Sessions</div><div class="value accent" id="statTotal">—</div></div>
+    <div class="stat-card"><div class="label">Rated Sessions</div><div class="value" id="statRated">—</div></div>
+    <div class="stat-card"><div class="label">Average Score</div><div class="value yellow" id="statAvg">—</div></div>
+    <div class="stat-card"><div class="label">Latest Score</div><div class="value green" id="statLatest">—</div></div>
+  </div>
+
+  <div class="chart-panel">
+    <h2>Rating Trend</h2>
+    <canvas id="trendChart"></canvas>
+  </div>
+
+  <div class="section-header">
+    <h2>Sessions</h2>
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Session</th>
+        <th>Date</th>
+        <th>Objects</th>
+        <th>Zones</th>
+        <th>Steps</th>
+        <th>Skipped</th>
+        <th>Rating</th>
+        <th>Comment</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="sessionBody">
+      <tr><td colspan="9" class="empty-state"><p>Loading…</p></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Detail modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Session detail</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let chart = null;
+let pendingComment = {}; // session_id → timeout handle
+
+// ── data loading ──────────────────────────────────────────────────────────
+
+async function loadAll() {
+  const [sessions, stats] = await Promise.all([
+    fetch(`${API}/api/sessions`).then(r => r.json()),
+    fetch(`${API}/api/stats`).then(r => r.json()),
+  ]);
+  renderStats(stats);
+  renderTrend(stats.trend || []);
+  renderTable(sessions.sessions || []);
+}
+
+// ── stats ─────────────────────────────────────────────────────────────────
+
+function renderStats(s) {
+  document.getElementById("statTotal").textContent = s.total ?? "—";
+  document.getElementById("statRated").textContent = s.rated ?? "—";
+  document.getElementById("statAvg").textContent = s.avg_rating != null ? s.avg_rating.toFixed(1) : "—";
+
+  const rows = document.querySelectorAll("#sessionBody tr");
+  let latest = "—";
+  for (const row of rows) {
+    const rating = row.dataset.rating;
+    if (rating) { latest = rating; break; }
+  }
+  document.getElementById("statLatest").textContent = latest;
+}
+
+// ── trend chart ───────────────────────────────────────────────────────────
+
+function renderTrend(trend) {
+  const ctx = document.getElementById("trendChart").getContext("2d");
+  const labels = trend.map(t => new Date(t.ts).toLocaleDateString());
+  const data = trend.map(t => t.rating);
+
+  if (chart) chart.destroy();
+
+  if (data.length === 0) {
+    const parent = document.getElementById("trendChart").parentElement;
+    parent.querySelector("canvas").style.display = "none";
+    if (!parent.querySelector(".no-data")) {
+      const p = document.createElement("p");
+      p.className = "no-data";
+      p.style.cssText = "color:#6b7280;text-align:center;padding:40px 0;font-size:13px;";
+      p.textContent = "No rated sessions yet — rate a session to see the trend.";
+      parent.appendChild(p);
+    }
+    return;
+  }
+  document.getElementById("trendChart").style.display = "";
+  document.querySelector(".chart-panel .no-data")?.remove();
+
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Rating",
+        data,
+        borderColor: "#5b8af5",
+        backgroundColor: "rgba(91,138,245,0.12)",
+        tension: 0.35,
+        pointBackgroundColor: "#f5c518",
+        pointRadius: 5,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          min: 0, max: 5,
+          ticks: { color: "#6b7280", stepSize: 1 },
+          grid: { color: "rgba(255,255,255,0.05)" },
+        },
+        x: {
+          ticks: { color: "#6b7280" },
+          grid: { color: "rgba(255,255,255,0.05)" },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `Score: ${ctx.raw}/5` } },
+      },
+    },
+  });
+}
+
+// ── table ─────────────────────────────────────────────────────────────────
+
+function renderTable(sessions) {
+  const tbody = document.getElementById("sessionBody");
+  if (!sessions.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-state"><p>No sessions yet. Run a detect + plan in the simulator.</p></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = sessions.map(s => {
+    const ts = new Date(s.timestamp).toLocaleString();
+    const skipBadge = s.skipped > 0
+      ? `<span class="badge badge-red">${s.skipped} skipped</span>`
+      : `<span class="badge badge-green">all clear</span>`;
+    const comment = s.comment || "";
+
+    return `<tr data-id="${s.id}" data-rating="${s.rating ?? ""}">
+      <td><code style="font-size:12px;color:#9ca3af">${s.id}</code></td>
+      <td class="ts">${ts}</td>
+      <td>${s.obj_count}</td>
+      <td>${s.zone_count}</td>
+      <td>${s.step_count}</td>
+      <td>${skipBadge}</td>
+      <td><div class="stars" id="stars-${s.id}" data-current="${s.rating ?? 0}">${starsHtml(s.id, s.rating ?? 0)}</div></td>
+      <td class="comment-cell">
+        <span class="comment-text" id="comment-text-${s.id}" title="${comment}" onclick="editComment('${s.id}')">${comment || '<span style="color:#3a3d4d">click to add…</span>'}</span>
+        <input class="comment-edit" id="comment-input-${s.id}" type="text" value="${comment}" placeholder="Add comment…"
+          onblur="submitComment('${s.id}')" onkeydown="if(event.key==='Enter')submitComment('${s.id}')" />
+      </td>
+      <td><span class="detail-link" onclick="openDetail('${s.id}')">view</span></td>
+    </tr>`;
+  }).join("");
+
+  // attach star hover/click
+  sessions.forEach(s => attachStars(s.id, s.rating ?? 0));
+
+  // update latest in stats from first rated session
+  const firstRated = sessions.find(s => s.rating);
+  document.getElementById("statLatest").textContent = firstRated?.rating ?? "—";
+}
+
+// ── stars ─────────────────────────────────────────────────────────────────
+
+function starsHtml(sid, current) {
+  return [1,2,3,4,5].map(i =>
+    `<span class="star ${i <= current ? "filled" : ""}" data-val="${i}">★</span>`
+  ).join("");
+}
+
+function attachStars(sid, currentRating) {
+  const container = document.getElementById(`stars-${sid}`);
+  if (!container) return;
+  let live = currentRating;
+
+  container.querySelectorAll(".star").forEach(star => {
+    const val = +star.dataset.val;
+
+    star.addEventListener("mouseenter", () => paint(container, val));
+    star.addEventListener("mouseleave", () => paint(container, live));
+    star.addEventListener("click", async () => {
+      live = val;
+      paint(container, live);
+      await submitRating(sid, val);
+      // update row dataset
+      container.closest("tr").dataset.rating = val;
+      // refresh stats
+      const stats = await fetch(`${API}/api/stats`).then(r => r.json());
+      renderStats(stats);
+      renderTrend(stats.trend || []);
+    });
+  });
+}
+
+function paint(container, upTo) {
+  container.querySelectorAll(".star").forEach(s => {
+    s.classList.toggle("filled", +s.dataset.val <= upTo);
+  });
+}
+
+async function submitRating(sid, rating) {
+  const input = document.getElementById(`comment-input-${sid}`);
+  const comment = input ? input.value : "";
+  await fetch(`${API}/api/feedback/${sid}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rating, comment }),
+  });
+}
+
+// ── comment ───────────────────────────────────────────────────────────────
+
+function editComment(sid) {
+  document.getElementById(`comment-text-${sid}`).style.display = "none";
+  const inp = document.getElementById(`comment-input-${sid}`);
+  inp.style.display = "block";
+  inp.focus();
+}
+
+async function submitComment(sid) {
+  const inp = document.getElementById(`comment-input-${sid}`);
+  const textEl = document.getElementById(`comment-text-${sid}`);
+  const comment = inp.value.trim();
+
+  inp.style.display = "none";
+  textEl.style.display = "inline-block";
+  textEl.innerHTML = comment || '<span style="color:#3a3d4d">click to add…</span>';
+
+  const row = inp.closest("tr");
+  const currentRating = parseInt(row.dataset.rating) || 0;
+  if (currentRating > 0) {
+    await fetch(`${API}/api/feedback/${sid}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rating: currentRating, comment }),
+    });
+  }
+}
+
+// ── detail modal ──────────────────────────────────────────────────────────
+
+async function openDetail(sid) {
+  const s = await fetch(`${API}/api/sessions/${sid}`).then(r => r.json());
+  const overlay = document.getElementById("modalOverlay");
+  document.getElementById("modalTitle").textContent = `Session ${sid} — ${new Date(s.timestamp).toLocaleString()}`;
+
+  const plan = s.plan;
+  const ws = s.workspace?.workspace || {};
+
+  let html = `<div style="margin-bottom:16px">`;
+  html += `<span class="badge badge-muted">${s.obj_count} objects</span> `;
+  html += `<span class="badge badge-muted">${s.zone_count} zones</span> `;
+  html += `<span class="badge badge-muted">${s.step_count} steps</span>`;
+  if (s.skipped) html += ` <span class="badge badge-red">${s.skipped} skipped</span>`;
+  html += `</div>`;
+
+  if (ws.objects?.length) {
+    html += `<p style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Detected Objects</p>`;
+    html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
+    ws.objects.forEach(o => {
+      html += `<span class="badge badge-muted">${o.label} <em style="opacity:.6">${o.category}</em></span>`;
+    });
+    html += `</div>`;
+  }
+
+  if (plan?.sequence?.length) {
+    html += `<p style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Plan Sequence</p>`;
+    plan.sequence.forEach((step, i) => {
+      const skipped = step.skip ? "skipped" : "";
+      html += `<div class="plan-step ${skipped}">
+        <span class="step-num">#${step.step ?? i + 1}</span>
+        <span class="step-obj">${step.object_id ?? "?"}</span>
+        → <span class="step-to">(${(step.to?.x ?? 0).toFixed(2)}, ${(step.to?.y ?? 0).toFixed(2)})</span>
+        ${step.skip ? '<span class="badge badge-red" style="margin-left:6px">skipped</span>' : ''}
+        ${step.reason ? `<div class="step-reason">${step.reason}</div>` : ""}
+      </div>`;
+    });
+  } else {
+    html += `<p style="color:#6b7280">No plan recorded for this session.</p>`;
+  }
+
+  document.getElementById("modalBody").innerHTML = html;
+  overlay.classList.add("open");
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById("modalOverlay")) {
+    document.getElementById("modalOverlay").classList.remove("open");
+  }
+}
+
+// ── init ──────────────────────────────────────────────────────────────────
+loadAll();
+</script>
+</body>
+</html>
