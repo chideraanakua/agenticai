@@ -1,30 +1,27 @@
 """
-server_v3.py — Phantom Limb Pipeline Server
+server.py — Phantom Limb Pipeline Server
 
-Serves the browser demo, runs hybrid detection + planning,
-and maintains backward compatibility with Unity via WebSocket.
+Serves the browser demo and runs hybrid detection + planning.
 
-Run:     python server_v3.py
+Run:     python server.py
 Demo:    http://localhost:8000
-Unity:   ws://localhost:8000/ws/unity
 
-Install: pip install fastapi uvicorn websockets google-generativeai opencv-python numpy Pillow
+Install: pip install fastapi uvicorn google-generativeai opencv-python numpy Pillow
 """
 
-import asyncio
-import json
 import os
-from fastapi import FastAPI, WebSocket, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from gemini_agents import (
     detect_objects_hybrid,
     plan_sorting,
-    category_to_color,
 )
+import storage as db
+
+db.init_db()
 
 app = FastAPI(title="Phantom Limb Pipeline")
 
@@ -42,8 +39,7 @@ app.add_middleware(
 
 current_workspace = None
 current_plan = None
-unity_ws = None
-unity_connected = False
+current_session_id = None
 status_log = []
 
 
@@ -75,11 +71,7 @@ async def serve_demo():
 
 @app.post("/api/detect")
 async def detect_endpoint(request: Request):
-    """
-    Accept an image (base64), run hybrid detection (Gemini + OpenCV),
-    return workspace JSON, and push to Unity if connected.
-    """
-    global current_workspace
+    global current_workspace, current_session_id
 
     body = await request.json()
     image_data = body.get("image")
@@ -95,24 +87,14 @@ async def detect_endpoint(request: Request):
         )
 
         current_workspace = workspace
+        current_session_id = db.new_session()
+        db.save_workspace(current_session_id, workspace)
+
         obj_count = len(workspace["workspace"]["objects"])
         zone_count = len(workspace["workspace"]["safety_zones"])
         log(f"Detection complete: {obj_count} objects, {zone_count} safety zones")
 
-        if unity_ws and unity_connected:
-            ws_data = workspace["workspace"].copy()
-            for obj in ws_data.get("objects", []):
-                if "color" not in obj:
-                    obj["color"] = category_to_color(
-                        obj.get("category", "other")
-                    )
-            await unity_ws.send_json({
-                "type": "workspace_init",
-                "data": ws_data,
-            })
-            log("Pushed workspace to Unity", "unity")
-
-        return workspace
+        return {**workspace, "session_id": current_session_id}
 
     except Exception as e:
         log(f"Detection error: {e}", "error")
@@ -121,10 +103,6 @@ async def detect_endpoint(request: Request):
 
 @app.post("/api/plan")
 async def plan_endpoint():
-    """
-    Generate sorting plan from current workspace using Gemini Agent 2.
-    Returns plan to browser AND pushes commands to Unity.
-    """
     global current_plan
 
     if not current_workspace:
@@ -141,45 +119,16 @@ async def plan_endpoint():
         )
 
         current_plan = plan
+        if current_session_id:
+            db.save_plan(current_session_id, plan)
         steps = plan.get("sequence", [])
         log(f"Plan ready: {len(steps)} steps")
-
-        if unity_ws and unity_connected:
-            asyncio.create_task(_push_plan_to_unity(steps))
 
         return plan
 
     except Exception as e:
         log(f"Planning error: {e}", "error")
         return JSONResponse({"error": str(e)}, status_code=500)
-
-
-async def _push_plan_to_unity(steps):
-    """Push sorting commands to Unity over WebSocket."""
-    try:
-        for step in steps:
-            command = {
-                "type": "move",
-                "step": step["step"],
-                "object_id": step["object_id"],
-                "target": step["to"],
-                "speed": 0.5,
-            }
-            await unity_ws.send_json(command)
-            log(
-                f"Unity ← step {step['step']}: "
-                f"{step['object_id']} → "
-                f"({step['to']['x']:.2f}, {step['to']['y']:.2f})",
-                "unity",
-            )
-            await asyncio.sleep(2)
-
-        await unity_ws.send_json({
-            "type": "done",
-            "message": f"All {len(steps)} moves complete",
-        })
-    except Exception as e:
-        log(f"Unity push error: {e}", "error")
 
 
 @app.post("/api/workspace")
@@ -193,14 +142,6 @@ async def receive_workspace(request: Request):
 
     current_workspace = data
     obj_count = len(data["workspace"].get("objects", []))
-
-    if unity_ws and unity_connected:
-        ws_data = data["workspace"].copy()
-        for obj in ws_data.get("objects", []):
-            if "color" not in obj:
-                obj["color"] = category_to_color(obj.get("category", "other"))
-        await unity_ws.send_json({"type": "workspace_init", "data": ws_data})
-
     return {"status": "ok", "objects": obj_count}
 
 
@@ -209,7 +150,6 @@ async def get_state():
     ws = current_workspace.get("workspace", {}) if current_workspace else {}
     objects = ws.get("objects", [])
     return {
-        "unity_connected": unity_connected,
         "object_count": len(objects),
         "objects": [
             {"id": o["id"], "label": o.get("label", "?")}
@@ -222,37 +162,47 @@ async def get_state():
 
 
 # ============================================================
-# WEBSOCKET — Unity connects here (backward compatible)
+# DASHBOARD & FEEDBACK ENDPOINTS
 # ============================================================
 
-@app.websocket("/ws/unity")
-async def unity_endpoint(websocket: WebSocket):
-    global unity_ws, unity_connected
-    await websocket.accept()
-    unity_ws = websocket
-    unity_connected = True
-    log("Unity connected!", "unity")
+@app.get("/dashboard")
+async def serve_dashboard():
+    path = os.path.join(STATIC_DIR, "dashboard.html")
+    if os.path.exists(path):
+        return FileResponse(path)
+    return HTMLResponse("<h1>Dashboard not found</h1>", status_code=404)
 
-    if current_workspace:
-        ws_data = current_workspace["workspace"].copy()
-        for obj in ws_data.get("objects", []):
-            if "color" not in obj:
-                obj["color"] = category_to_color(obj.get("category", "other"))
-        await websocket.send_json({
-            "type": "workspace_init",
-            "data": ws_data,
-        })
-        log(f"Sent current workspace to Unity ({len(ws_data.get('objects', []))} objects)")
 
+@app.get("/api/sessions")
+async def list_sessions():
+    return {"sessions": db.get_sessions()}
+
+
+@app.get("/api/sessions/{session_id}")
+async def get_session(session_id: str):
+    s = db.get_session(session_id)
+    if not s:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    return s
+
+
+@app.post("/api/feedback/{session_id}")
+async def submit_feedback(session_id: str, request: Request):
+    body = await request.json()
+    rating = body.get("rating")
+    comment = body.get("comment", "")
+    if not isinstance(rating, int) or not (1 <= rating <= 5):
+        return JSONResponse({"error": "rating must be integer 1–5"}, status_code=400)
     try:
-        while True:
-            msg = await websocket.receive_text()
-            data = json.loads(msg)
-            log(f"Unity ack: {data.get('status', 'unknown')}", "unity")
-    except Exception:
-        unity_connected = False
-        unity_ws = None
-        log("Unity disconnected", "unity")
+        db.save_feedback(session_id, rating, comment)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return {"status": "ok", "session_id": session_id, "rating": rating}
+
+
+@app.get("/api/stats")
+async def get_stats():
+    return db.get_stats()
 
 
 # ============================================================
@@ -261,10 +211,10 @@ async def unity_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     print("\n" + "=" * 54)
-    print("  PHANTOM LIMB — Pipeline Server v3")
+    print("  PHANTOM LIMB — Pipeline Server")
     print("  " + "-" * 50)
     print("  Browser demo:  http://localhost:8000")
-    print("  Unity WS:      ws://localhost:8000/ws/unity")
+    print("  Dashboard:     http://localhost:8000/dashboard")
     print("  API state:     http://localhost:8000/api/state")
     print("  " + "-" * 50)
     print("  Gemini key:    " + (
