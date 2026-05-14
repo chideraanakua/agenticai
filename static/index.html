@@ -524,6 +524,22 @@
       let workspaceData = null;
       let planData = null;
       let sourceImage = null;
+      let _logPoll = null;
+
+      function startLogPolling(onLog) {
+        _logPoll = setInterval(async () => {
+          try {
+            const r = await fetch(`${API}/api/state`);
+            const d = await r.json();
+            const logs = d.recent_log || [];
+            if (logs.length > 0) onLog(logs[logs.length - 1].msg);
+          } catch (_) {}
+        }, 800);
+      }
+
+      function stopLogPolling() {
+        if (_logPoll) { clearInterval(_logPoll); _logPoll = null; }
+      }
 
       // ============================================================
       // CAMERA
@@ -611,6 +627,9 @@
         document.getElementById("btnScan").disabled = true;
         document.getElementById("btnPlan").disabled = true;
         document.getElementById("objCount").textContent = "detecting...";
+        startLogPolling(msg => {
+          document.getElementById("objCount").textContent = msg;
+        });
 
         try {
           const base64 = imageDataUrl.includes(",")
@@ -644,6 +663,7 @@
           console.error("Detection error:", e.message);
         }
 
+        stopLogPolling();
         loader.classList.remove("active");
         document.getElementById("btnScan").disabled = !stream;
       }
@@ -808,6 +828,9 @@
         document.getElementById("btnPlan").disabled = true;
         document.getElementById("planStatus").textContent = "planning...";
         document.getElementById("planEmpty").style.display = "none";
+        startLogPolling(msg => {
+          document.getElementById("planStatus").textContent = msg;
+        });
 
         try {
           const resp = await fetch(`${API}/api/plan`, { method: "POST" });
@@ -826,6 +849,7 @@
           document.getElementById("planStatus").textContent = "error: " + e.message;
         }
 
+        stopLogPolling();
         loader.classList.remove("active");
         document.getElementById("btnPlan").disabled = false;
       }
