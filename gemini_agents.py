@@ -516,7 +516,160 @@ def plan_sorting(workspace_data, status_callback=None):
 
     except Exception as e:
         status(f"Gemini planning failed ({e}), using heuristic")
-        return _heuristic_plan(objects, safety_zones)
+        plan = _heuristic_plan(objects, safety_zones)
+
+    plan, relocated = _enforce_safety(plan, safety_zones)
+    skipped = sum(1 for s in plan.get("sequence", []) if s.get("skip"))
+    if relocated:
+        status(f"Safety enforcement: relocated {relocated} target(s) outside safety zones")
+    if skipped:
+        status(f"Safety enforcement: skipped {skipped} step(s) — no safe path available")
+    return plan
+
+
+def _segments_intersect(p1, p2, p3, p4):
+    """Return True if segment p1-p2 properly intersects segment p3-p4."""
+    def cross2d(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    d1 = cross2d(p3, p4, p1)
+    d2 = cross2d(p3, p4, p2)
+    d3 = cross2d(p1, p2, p3)
+    d4 = cross2d(p1, p2, p4)
+
+    if ((d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0)) and \
+       ((d3 > 0 and d4 < 0) or (d3 < 0 and d4 > 0)):
+        return True
+
+    def on_seg(p, q, r):
+        return (min(p[0], r[0]) <= q[0] <= max(p[0], r[0]) and
+                min(p[1], r[1]) <= q[1] <= max(p[1], r[1]))
+
+    if d1 == 0 and on_seg(p3, p1, p4): return True
+    if d2 == 0 and on_seg(p3, p2, p4): return True
+    if d3 == 0 and on_seg(p1, p3, p2): return True
+    if d4 == 0 and on_seg(p1, p4, p2): return True
+    return False
+
+
+def _path_crosses_any_zone(x1, y1, x2, y2, safety_zones):
+    """True if the straight-line path (x1,y1)→(x2,y2) enters any safety zone."""
+    if _in_any_zone(x1, y1, safety_zones) or _in_any_zone(x2, y2, safety_zones):
+        return True
+    p1, p2 = (x1, y1), (x2, y2)
+    for zone in safety_zones:
+        poly = zone.get("polygon", [])
+        n = len(poly)
+        for i in range(n):
+            j = (i + 1) % n
+            if _segments_intersect(p1, p2,
+                                   (poly[i]["x"], poly[i]["y"]),
+                                   (poly[j]["x"], poly[j]["y"])):
+                return True
+    return False
+
+
+def _point_in_polygon(x, y, polygon):
+    """Ray-casting point-in-polygon test (normalized coords)."""
+    inside = False
+    n = len(polygon)
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]["x"], polygon[i]["y"]
+        xj, yj = polygon[j]["x"], polygon[j]["y"]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _in_any_zone(x, y, safety_zones):
+    return any(
+        _point_in_polygon(x, y, z.get("polygon", []))
+        for z in safety_zones
+        if z.get("polygon")
+    )
+
+
+def _enforce_safety(plan, safety_zones):
+    """
+    Hard-constraint pass applied after both Gemini and heuristic planners.
+
+    For every step, two conditions must hold:
+      1. The destination ('to') is outside every safety zone.
+      2. The straight-line carry path from the object's current position
+         ('from') to 'to' does not cross any safety zone polygon.
+
+    If either condition fails, we scan safe_candidates for a replacement
+    destination that satisfies both. If none exists the step is marked
+    skip=True and will not be executed.
+    """
+    if not safety_zones or not plan.get("sequence"):
+        return plan, 0
+
+    sx_min, sx_max, sy_min, sy_max = _compute_safe_area(safety_zones)
+    candidates = _generate_grid_positions(
+        len(plan["sequence"]) * 6, sx_min, sx_max, sy_min, sy_max
+    )
+    # Pre-filter: destination must be outside every zone
+    safe_candidates = [
+        c for c in candidates if not _in_any_zone(c["x"], c["y"], safety_zones)
+    ]
+
+    used = []
+    relocated = 0
+    skipped = 0
+
+    for step in plan["sequence"]:
+        frm = step.get("from", {})
+        to = step["to"]
+        fx, fy = frm.get("x", to["x"]), frm.get("y", to["y"])
+
+        dest_unsafe = _in_any_zone(to["x"], to["y"], safety_zones)
+        path_unsafe = _path_crosses_any_zone(fx, fy, to["x"], to["y"], safety_zones)
+
+        if dest_unsafe or path_unsafe:
+            placed = False
+            for cand in safe_candidates:
+                if any(
+                    abs(cand["x"] - p["x"]) < 0.08 and abs(cand["y"] - p["y"]) < 0.08
+                    for p in used
+                ):
+                    continue
+                # Candidate destination must also have a safe carry path
+                if _path_crosses_any_zone(fx, fy, cand["x"], cand["y"], safety_zones):
+                    continue
+                step["to"] = cand
+                step["reason"] = (step.get("reason") or "") + " [safety enforced]"
+                used.append(cand)
+                relocated += 1
+                placed = True
+                break
+
+            if not placed:
+                step["skip"] = True
+                step["reason"] = (
+                    (step.get("reason") or "")
+                    + " [skipped: no safe path available]"
+                )
+                skipped += 1
+        else:
+            used.append(to)
+
+    # Also fix cluster target_zones
+    for cluster in plan.get("clusters", []):
+        tz = cluster.get("target_zone", {})
+        if tz and _in_any_zone(tz["x"], tz["y"], safety_zones):
+            for cand in safe_candidates:
+                if not any(
+                    abs(cand["x"] - p["x"]) < 0.08 and abs(cand["y"] - p["y"]) < 0.08
+                    for p in used
+                ):
+                    cluster["target_zone"] = cand
+                    used.append(cand)
+                    break
+
+    return plan, relocated
 
 
 def _compute_safe_area(safety_zones):
