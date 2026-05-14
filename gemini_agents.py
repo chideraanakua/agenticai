@@ -500,7 +500,7 @@ def plan_sorting(workspace_data, status_callback=None):
             prompt,
             generation_config=genai.GenerationConfig(
                 temperature=0.0,
-                max_output_tokens=4096,
+                max_output_tokens=8192,
             ),
         )
         plan = _parse_json_response(response.text)
