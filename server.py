@@ -13,7 +13,11 @@ import os
 import base64
 import io
 import pathlib
-from fastapi import FastAPI, Request
+import asyncio
+import time
+import numpy as np
+import cv2
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -24,7 +28,9 @@ from gemini_agents import (
     detect_objects_hybrid,
     plan_sorting,
     category_to_color,
+    _path_crosses_any_zone,
 )
+from tracker import ObjectTracker, HumanZoneTracker, check_drift
 import storage as db
 
 db.init_db()
@@ -48,12 +54,102 @@ current_plan = None
 current_session_id = None
 status_log = []
 
+# ---- video tracking state ----
+tracker_pool: dict = {}           # object_id → ObjectTracker
+human_zone_tracker: HumanZoneTracker | None = None
+current_step_index: int = 0       # which step the frontend animation is on
+last_replan_time: float = 0.0
+REPLAN_COOLDOWN: float = 8.0      # seconds between auto-replans
+_replan_lock = asyncio.Lock()
+_ws_clients: list[WebSocket] = []
+
 
 def log(msg, level="info"):
     status_log.append({"msg": msg, "level": level})
     if len(status_log) > 200:
         status_log.pop(0)
     print(f"  [{level.upper()}] {msg}")
+
+
+def _decode_frame_b64(frame_b64: str):
+    raw = frame_b64.split(",", 1)[-1] if "," in frame_b64 else frame_b64
+    img_array = np.frombuffer(base64.b64decode(raw), dtype=np.uint8)
+    return cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+
+def _init_trackers(workspace: dict, frame):
+    """Initialise CSRT trackers and MediaPipe pose tracker from a fresh workspace."""
+    global tracker_pool, human_zone_tracker, current_step_index, last_replan_time
+
+    if human_zone_tracker:
+        human_zone_tracker.close()
+
+    ws = workspace.get("workspace", {})
+    h, w = frame.shape[:2]
+
+    tracker_pool = {}
+    for obj in ws.get("objects", []):
+        bbox_px = obj.get("bbox_px")
+        if not bbox_px:
+            continue
+        x1, y1, x2, y2 = bbox_px
+        bw, bh = x2 - x1, y2 - y1
+        if bw > 0 and bh > 0:
+            tracker_pool[obj["id"]] = ObjectTracker(obj["id"], (x1, y1, bw, bh), frame)
+
+    static_polygon = None
+    for zone in ws.get("safety_zones", []):
+        if zone.get("type") == "human_presence":
+            static_polygon = zone.get("polygon")
+            break
+
+    human_zone_tracker = HumanZoneTracker(static_polygon=static_polygon)
+    current_step_index = 0
+    last_replan_time = time.time()  # grace period — no replan for REPLAN_COOLDOWN seconds after init
+    log(f"Trackers initialised: {len(tracker_pool)} objects")
+
+
+async def _push_to_clients(message: dict):
+    dead = []
+    for ws in _ws_clients:
+        try:
+            await ws.send_json(message)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        if ws in _ws_clients:
+            _ws_clients.remove(ws)
+
+
+async def _auto_replan(frame_b64: str):
+    """Re-detect and re-plan using the current frame. Rate-limited by REPLAN_COOLDOWN."""
+    global current_workspace, current_plan, current_step_index, last_replan_time
+
+    async with _replan_lock:
+        last_replan_time = time.time()
+        log("Auto-replan: re-detecting workspace...", "replan")
+        try:
+            loop = asyncio.get_event_loop()
+            workspace = await loop.run_in_executor(None, detect_objects_hybrid, frame_b64)
+            current_workspace = workspace
+
+            frame = _decode_frame_b64(frame_b64)
+            if frame is not None:
+                _init_trackers(workspace, frame)
+
+            plan = await loop.run_in_executor(None, plan_sorting, workspace)
+            current_plan = plan
+            current_step_index = 0
+
+            log(f"Auto-replan complete: {len(plan.get('sequence', []))} steps", "replan")
+            await _push_to_clients({
+                "type": "replan",
+                "plan": plan,
+                "workspace": workspace,
+                "resume_from_step": 0,
+            })
+        except Exception as e:
+            log(f"Auto-replan failed: {e}", "error")
 
 
 # ============================================================
@@ -138,6 +234,10 @@ async def detect_endpoint(request: Request):
         current_workspace = workspace
         current_session_id = db.new_session()
         db.save_workspace(current_session_id, workspace)
+
+        frame = _decode_frame_b64(image_data)
+        if frame is not None:
+            _init_trackers(workspace, frame)
 
         try:
             orig_url, ann_url = _save_session_images(current_session_id, image_data, workspace)
