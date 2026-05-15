@@ -354,6 +354,12 @@ def detect_objects_hybrid(image_source, status_callback=None):
                     "y": round(refined["y_max"], 4),
                 },
             },
+            "bbox_px": [
+                int(refined["x_min"] * w),
+                int(refined["y_min"] * h),
+                int(refined["x_max"] * w),
+                int(refined["y_max"] * h),
+            ],
             "area_ratio": round(area, 4),
             "confidence": round(min(0.97, 0.70 + coverage * 0.30), 2) if source == "opencv" else 0.62,
             "coord_source": source,
