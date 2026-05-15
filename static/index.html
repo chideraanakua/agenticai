@@ -377,6 +377,18 @@
       <div class="status"></div>
     </div>
 
+    <div id="sessionBanner" style="display:none;align-items:center;gap:12px;
+      padding:8px 20px;background:rgba(99,102,241,0.1);border-bottom:1px solid rgba(99,102,241,0.2);
+      font-size:12px;color:#818cf8;font-family:var(--mono)">
+      <span id="sessionBannerLabel"></span>
+      <button onclick="window.location.href='/'"
+        style="margin-left:auto;background:rgba(99,102,241,0.15);color:#818cf8;
+               border:1px solid rgba(99,102,241,0.3);border-radius:5px;
+               padding:4px 12px;font-size:12px;cursor:pointer">
+        + New Session
+      </button>
+    </div>
+
     <div class="grid">
       <!-- Panel 1: Camera / Input -->
       <div class="panel" id="p-camera">
@@ -788,6 +800,7 @@
 
       function renderTagStrip(ws) {
         const strip = document.getElementById("tagStrip");
+        if (!strip) return;
         strip.innerHTML = "";
         strip.style.display = "flex";
 
@@ -1453,31 +1466,51 @@
       async function maybeRestoreSession() {
         const sid = new URLSearchParams(location.search).get("session");
         if (!sid) return;
-        const s = await fetch(`${API}/api/sessions/${sid}`).then(r => r.json());
-        if (s.error || !s.workspace || !s.plan) return;
 
-        workspaceData = s.workspace;
-        planData = s.plan;
+        const banner = document.getElementById("sessionBanner");
+        const bannerLabel = document.getElementById("sessionBannerLabel");
+        banner.style.display = "flex";
+        const grid = document.querySelector(".grid");
+        grid.style.height = `calc(100vh - 49px - ${banner.offsetHeight}px)`;
 
-        if (s.image_original) {
-          try {
-            const blob = await fetch(s.image_original).then(r => r.blob());
-            const dataUrl = await new Promise(res => {
-              const reader = new FileReader();
-              reader.onload = e => res(e.target.result);
-              reader.readAsDataURL(blob);
-            });
-            drawAnnotations(dataUrl, workspaceData);
-          } catch (_) {}
+        try {
+          const s = await fetch(`${API}/api/sessions/${sid}`).then(r => r.json());
+
+          if (s.error) {
+            bannerLabel.textContent = `Session ${sid} not found`;
+            return;
+          }
+          if (!s.plan) {
+            bannerLabel.textContent = `Session ${sid} — detection only, no plan recorded`;
+            return;
+          }
+
+          workspaceData = s.workspace;
+          planData = s.plan;
+
+          updateSimWorkspace(workspaceData);
+          renderSteps(planData);
+
+          if (s.image_original) {
+            try {
+              const blob = await fetch(s.image_original).then(r => r.blob());
+              const dataUrl = await new Promise(res => {
+                const reader = new FileReader();
+                reader.onload = e => res(e.target.result);
+                reader.readAsDataURL(blob);
+              });
+              drawAnnotations(dataUrl, workspaceData);
+            } catch (_) {}
+          }
+
+          document.getElementById("btnExec").disabled = false;
+          document.getElementById("planStatus").textContent =
+            `${planData.sequence.length} steps — ${planData.strategy || ""}`;
+
+          bannerLabel.textContent = `Viewing saved session ${sid} — read-only replay`;
+        } catch (err) {
+          bannerLabel.textContent = `Failed to load session ${sid}: ${err.message}`;
         }
-
-        updateSimWorkspace(workspaceData);
-        renderSteps(planData);
-
-        document.getElementById("btnExec").disabled = false;
-        document.getElementById("planEmpty").style.display = "none";
-        document.getElementById("planStatus").textContent =
-          `${planData.sequence.length} steps — ${planData.strategy || ""} (session ${sid})`;
       }
       maybeRestoreSession();
     </script>

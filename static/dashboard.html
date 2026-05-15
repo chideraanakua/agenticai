@@ -450,11 +450,14 @@ async function openDetail(sid) {
   }
 
   html += `<div style="margin-top:16px;padding-top:16px;border-top:1px solid #1f2937;display:flex;justify-content:flex-end">
-    <button onclick="window.location.href='/?session=${sid}'"
-      style="background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.3);
-             border-radius:6px;padding:7px 16px;font-size:13px;cursor:pointer">
-      Load &amp; Simulate
-    </button>
+    ${plan?.sequence?.length
+      ? `<button onclick="window.location.href='/?session=${sid}'"
+          style="background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.3);
+                 border-radius:6px;padding:7px 16px;font-size:13px;cursor:pointer">
+          Load &amp; Simulate
+        </button>`
+      : `<span style="font-size:12px;color:#6b7280">No plan — detect + plan first to enable simulation</span>`
+    }
   </div>`;
 
   document.getElementById("modalBody").innerHTML = html;
