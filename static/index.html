@@ -1449,6 +1449,37 @@
       });
 
       initSim();
+
+      async function maybeRestoreSession() {
+        const sid = new URLSearchParams(location.search).get("session");
+        if (!sid) return;
+        const s = await fetch(`${API}/api/sessions/${sid}`).then(r => r.json());
+        if (s.error || !s.workspace || !s.plan) return;
+
+        workspaceData = s.workspace;
+        planData = s.plan;
+
+        if (s.image_original) {
+          try {
+            const blob = await fetch(s.image_original).then(r => r.blob());
+            const dataUrl = await new Promise(res => {
+              const reader = new FileReader();
+              reader.onload = e => res(e.target.result);
+              reader.readAsDataURL(blob);
+            });
+            drawAnnotations(dataUrl, workspaceData);
+          } catch (_) {}
+        }
+
+        updateSimWorkspace(workspaceData);
+        renderSteps(planData);
+
+        document.getElementById("btnExec").disabled = false;
+        document.getElementById("planEmpty").style.display = "none";
+        document.getElementById("planStatus").textContent =
+          `${planData.sequence.length} steps — ${planData.strategy || ""} (session ${sid})`;
+      }
+      maybeRestoreSession();
     </script>
   </body>
 </html>
