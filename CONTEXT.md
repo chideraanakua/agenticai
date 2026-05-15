@@ -58,6 +58,28 @@ Camera / Upload
 
 ## Changelog
 
+### 2026-05-14 — Session persistence, image storage & replay
+
+- **Feat (`gemini_agents.py`):** Plan steps now include `object_label` alongside `object_id` — injected after `_enforce_safety()` runs using an `id → label` map built from the workspace objects. Applies to both Gemini and heuristic plan paths.
+
+- **Fix (`static/dashboard.html`):** Session modal was rendering raw `obj_00x` IDs in plan steps. Now uses `step.object_label` with fallback to `step.object_id` for sessions recorded before this change.
+
+- **Feat: image storage (`storage.py`, `server.py`):** After each detect call, `original.jpg` and `annotated.jpg` are saved to `static/sessions/{id}/`. Annotation is drawn server-side with Pillow — safety zone polygons as semi-transparent red overlays, bounding boxes coloured by `category_to_color()` from `gemini_agents.py`. Image URLs stored in two new SQLite columns (`image_original`, `image_annotated`). `init_db()` auto-migrates existing DBs via `PRAGMA table_info`. FastAPI serves session images via a `/static` `StaticFiles` mount.
+
+- **Fix (image save):** Both `bounding_box` (stored as `{top_left: {x,y}, bottom_right: {x,y}}`) and polygon points (stored as `{x, y}` dicts) were being accessed as flat lists — crashing the annotated image generation silently. Fixed with `isinstance(bb, dict)` and `isinstance(p, dict)` guards. Image save is wrapped in try/except so a failure never blocks the detect response.
+
+- **Feat: session replay (`static/index.html`):** Main portal now supports `/?session=<id>`. On load, `maybeRestoreSession()` fetches the stored workspace + plan from `GET /api/sessions/{id}`, fetches `image_original` as a blob and converts to data URL (matching the live detect flow), calls `drawAnnotations`, `updateSimWorkspace`, and `renderSteps`, then enables "Execute in sim". A session banner appears below the header showing the session ID and a "+ New Session" button that navigates to `/`. Grid height is adjusted dynamically by `banner.offsetHeight` so the plan panel bottom bar stays visible.
+
+- **Feat: Load & Simulate button (`static/dashboard.html`):** Session detail modal footer shows a "Load & Simulate" button that navigates to `/?session=<id>`. Button is only shown when a plan exists (`plan.sequence.length > 0`); plan-less sessions show a hint instead.
+
+- **Fixes (session restore, multiple):**
+  - `btnExec` was hardcoded `disabled` in HTML and never enabled during restore — fixed.
+  - `planEmpty` is a child of `stepsList`; `renderSteps` wipes it via `innerHTML = ""`, so the subsequent `getElementById("planEmpty").style.display` call threw null. Line removed.
+  - `renderTagStrip` called inside `drawAnnotations` could throw if `tagStrip` was null in the restore context — added null guard (`if (!strip) return`).
+  - `drawAnnotations` and its image fetch are now isolated in their own `try/catch` so annotation failure never blocks sim/steps from loading.
+  - `updateSimWorkspace` and `renderSteps` now run before the image fetch so the simulation is ready even if image loading is slow or fails.
+  - Banner is shown before the try block so failure messages are always visible to the user.
+
 ### 2026-05-13 — Pre-demo fixes
 - **Bug fix:** Safety enforcement (`_enforce_safety()`) was skipped when Gemini succeeded — it only ran on the heuristic fallback path. Fixed so it always runs.
 - **Bug fix:** `GEMINI_MODEL` had no default; crashes if env var missing. Now defaults to `gemini-2.5-flash`.
