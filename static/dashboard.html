@@ -121,6 +121,10 @@
   .empty-state p { margin-top: 8px; font-size: 13px; }
 
   .ts { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+  .img-tab { background: rgba(107,114,128,0.2); color: var(--muted); border: none; border-radius: 4px;
+    padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  .img-tab.active { background: rgba(99,102,241,0.2); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -408,6 +412,18 @@ async function openDetail(sid) {
   if (s.skipped) html += ` <span class="badge badge-red">${s.skipped} skipped</span>`;
   html += `</div>`;
 
+  if (s.image_original || s.image_annotated) {
+    html += `<div style="margin-bottom:16px">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        ${s.image_original ? `<button onclick="switchImg(this,'${s.image_original}')" class="img-tab active">Original</button>` : ''}
+        ${s.image_annotated ? `<button onclick="switchImg(this,'${s.image_annotated}')" class="img-tab">Annotated</button>` : ''}
+      </div>
+      <img id="sessionImg" src="${s.image_original || s.image_annotated}"
+        style="width:100%;border-radius:6px;border:1px solid #374151;cursor:pointer"
+        onclick="window.open(this.src,'_blank')">
+    </div>`;
+  }
+
   if (ws.objects?.length) {
     html += `<p style="color:#6b7280;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Detected Objects</p>`;
     html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
@@ -435,6 +451,12 @@ async function openDetail(sid) {
 
   document.getElementById("modalBody").innerHTML = html;
   overlay.classList.add("open");
+}
+
+function switchImg(btn, src) {
+  document.getElementById("sessionImg").src = src;
+  btn.closest("div").querySelectorAll(".img-tab").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
 }
 
 function closeModal(e) {
