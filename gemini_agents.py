@@ -23,6 +23,7 @@ import json
 import os
 import re
 import base64
+import time
 import traceback
 from datetime import datetime, timezone
 from PIL import Image
@@ -32,6 +33,33 @@ load_dotenv()
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 _client = None
+
+_RETRY_DELAYS = [5, 15, 30]  # seconds between retries on rate-limit
+
+
+def _gemini_with_retry(fn, status_cb=None):
+    """
+    Calls fn() which must return a Gemini response.
+    Retries up to 3 times with increasing delays on 429 / quota errors.
+    Raises on non-rate-limit errors or after all retries exhausted.
+    """
+    last_err = None
+    for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+        if delay:
+            msg = f"Rate limit — waiting {delay}s (retry {attempt}/{len(_RETRY_DELAYS)})"
+            if status_cb:
+                status_cb(msg)
+            print(f"  [WARN] {msg}")
+            time.sleep(delay)
+        try:
+            return fn()
+        except Exception as e:
+            err = str(e).lower()
+            if any(k in err for k in ("429", "quota", "rate", "resource exhausted")):
+                last_err = e
+                continue
+            raise  # non-rate-limit error — fail immediately
+    raise last_err
 
 
 def _get_client():
@@ -298,12 +326,15 @@ def detect_objects_hybrid(image_source, status_callback=None):
 
     status("Sending to Gemini for object identification...")
     model = _get_client()
-    response = model.generate_content(
-        [DETECTION_PROMPT, img_pil],
-        generation_config=genai.GenerationConfig(
-            temperature=0.0,
-            max_output_tokens=8192,
+    response = _gemini_with_retry(
+        lambda: model.generate_content(
+            [DETECTION_PROMPT, img_pil],
+            generation_config=genai.GenerationConfig(
+                temperature=0.0,
+                max_output_tokens=8192,
+            ),
         ),
+        status_cb=status,
     )
 
     gemini_data = _parse_json_response(response.text)
@@ -487,26 +518,38 @@ def plan_sorting(workspace_data, status_callback=None):
                 "id": o["id"],
                 "label": o["label"],
                 "category": o["category"],
-                "centroid": o["centroid"],
+                "centroid": {
+                    "x": round(o["centroid"]["x"], 2),
+                    "y": round(o["centroid"]["y"], 2),
+                },
             }
             for o in objects
         ],
         "safety_zones": [
-            {"id": z["id"], "polygon": z["polygon"]}
+            {
+                "id": z["id"],
+                "polygon": [
+                    {"x": round(p["x"], 2), "y": round(p["y"], 2)}
+                    for p in z["polygon"]
+                ],
+            }
             for z in safety_zones
         ],
-    }, indent=2)
+    }, separators=(",", ":"))  # no whitespace — cuts token count ~35%
 
     prompt = f"{PLANNING_PROMPT}\n\nWorkspace state:\n{workspace_summary}"
 
     try:
         model = _get_client()
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.0,
-                max_output_tokens=8192,
+        response = _gemini_with_retry(
+            lambda: model.generate_content(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.0,
+                    max_output_tokens=8192,
+                ),
             ),
+            status_cb=status,
         )
         plan = _parse_json_response(response.text)
 
