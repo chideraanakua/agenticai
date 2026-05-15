@@ -10,14 +10,20 @@ Install: pip install fastapi uvicorn google-generativeai opencv-python numpy Pil
 """
 
 import os
+import base64
+import io
+import pathlib
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageDraw
 import uvicorn
 
 from gemini_agents import (
     detect_objects_hybrid,
     plan_sorting,
+    category_to_color,
 )
 import storage as db
 
@@ -55,6 +61,49 @@ def log(msg, level="info"):
 # ============================================================
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def _save_session_images(session_id: str, image_b64: str, workspace: dict):
+    b64 = image_b64.split(",", 1)[-1]
+    img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+    w, h = img.size
+
+    session_dir = pathlib.Path(STATIC_DIR) / "sessions" / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    img.save(session_dir / "original.jpg", "JPEG", quality=85)
+
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    ws = workspace.get("workspace", workspace)
+    for zone in ws.get("safety_zones", []):
+        poly = [
+            (p["x"] * w, p["y"] * h) if isinstance(p, dict) else (p[0] * w, p[1] * h)
+            for p in zone.get("polygon", [])
+        ]
+        if len(poly) >= 3:
+            draw.polygon(poly, fill=(255, 80, 80, 60), outline=(255, 80, 80, 200))
+
+    annotated = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+    draw2 = ImageDraw.Draw(annotated)
+    for obj in ws.get("objects", []):
+        bb = obj.get("bounding_box")
+        if not bb:
+            continue
+        if isinstance(bb, dict):
+            x1 = bb["top_left"]["x"] * w
+            y1 = bb["top_left"]["y"] * h
+            x2 = bb["bottom_right"]["x"] * w
+            y2 = bb["bottom_right"]["y"] * h
+        else:
+            x1, y1, x2, y2 = bb[0] * w, bb[1] * h, bb[2] * w, bb[3] * h
+        color = category_to_color(obj.get("category", "other"))
+        draw2.rectangle([x1, y1, x2, y2], outline=color, width=2)
+        draw2.text((x1 + 3, y1 + 3), obj.get("label", obj.get("id", "?")), fill=color)
+
+    annotated.save(session_dir / "annotated.jpg", "JPEG", quality=85)
+    base = f"/static/sessions/{session_id}"
+    return f"{base}/original.jpg", f"{base}/annotated.jpg"
 
 
 @app.get("/")
@@ -89,6 +138,14 @@ async def detect_endpoint(request: Request):
         current_workspace = workspace
         current_session_id = db.new_session()
         db.save_workspace(current_session_id, workspace)
+
+        try:
+            orig_url, ann_url = _save_session_images(current_session_id, image_data, workspace)
+        except Exception as img_err:
+            log(f"Image save failed: {img_err}", "warn")
+            orig_url, ann_url = None, None
+        if orig_url:
+            db.save_images(current_session_id, orig_url, ann_url)
 
         obj_count = len(workspace["workspace"]["objects"])
         zone_count = len(workspace["workspace"]["safety_zones"])

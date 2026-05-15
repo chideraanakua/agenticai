@@ -13,17 +13,19 @@ DB_PATH = Path(__file__).parent / "sessions.db"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
-    id          TEXT PRIMARY KEY,
-    timestamp   TEXT NOT NULL,
-    obj_count   INTEGER DEFAULT 0,
-    zone_count  INTEGER DEFAULT 0,
-    step_count  INTEGER DEFAULT 0,
-    skipped     INTEGER DEFAULT 0,
-    relocated   INTEGER DEFAULT 0,
-    workspace   TEXT,
-    plan        TEXT,
-    rating      INTEGER,
-    comment     TEXT
+    id              TEXT PRIMARY KEY,
+    timestamp       TEXT NOT NULL,
+    obj_count       INTEGER DEFAULT 0,
+    zone_count      INTEGER DEFAULT 0,
+    step_count      INTEGER DEFAULT 0,
+    skipped         INTEGER DEFAULT 0,
+    relocated       INTEGER DEFAULT 0,
+    workspace       TEXT,
+    plan            TEXT,
+    rating          INTEGER,
+    comment         TEXT,
+    image_original  TEXT,
+    image_annotated TEXT
 );
 """
 
@@ -37,6 +39,11 @@ def _connect() -> sqlite3.Connection:
 def init_db():
     with _connect() as conn:
         conn.execute(_SCHEMA)
+        # migrate existing DBs that predate the image columns
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+        for col, typedef in [("image_original", "TEXT"), ("image_annotated", "TEXT")]:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE sessions ADD COLUMN {col} {typedef}")
         conn.commit()
 
 
@@ -64,6 +71,15 @@ def save_workspace(session_id: str, workspace: dict):
                 len(ws.get("safety_zones", [])),
                 session_id,
             ),
+        )
+        conn.commit()
+
+
+def save_images(session_id: str, original_url: str, annotated_url: str):
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE sessions SET image_original=?, image_annotated=? WHERE id=?",
+            (original_url, annotated_url, session_id),
         )
         conn.commit()
 
