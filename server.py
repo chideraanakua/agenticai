@@ -363,6 +363,116 @@ async def get_stats():
 
 
 # ============================================================
+# VIDEO TRACKING ENDPOINTS
+# ============================================================
+
+@app.websocket("/ws/unity")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    _ws_clients.append(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # keep-alive; we only push, never pull
+    except WebSocketDisconnect:
+        if websocket in _ws_clients:
+            _ws_clients.remove(websocket)
+
+
+@app.post("/api/video/frame")
+async def video_frame_endpoint(request: Request):
+    global last_replan_time
+
+    body = await request.json()
+    frame_b64 = body.get("frame")
+    if not frame_b64:
+        return JSONResponse({"error": "No frame provided"}, status_code=400)
+
+    frame = _decode_frame_b64(frame_b64)
+    if frame is None:
+        return JSONResponse({"error": "Could not decode frame"}, status_code=400)
+
+    h, w = frame.shape[:2]
+
+    # Update object trackers
+    positions = {}
+    lost_objects = []
+    for obj_id, tracker in tracker_pool.items():
+        success, _ = tracker.update(frame)
+        if success:
+            cx, cy = tracker.centroid_normalized(w, h)
+            positions[obj_id] = {
+                "centroid": {"x": cx, "y": cy},
+                "bbox": tracker.bbox_normalized(w, h),
+            }
+        else:
+            lost_objects.append(obj_id)
+
+    # Update human safety zone
+    human_zone = human_zone_tracker.update(frame) if human_zone_tracker else None
+
+    # Build current zones list with updated human polygon for path checks
+    stale_steps, blocked_steps = [], []
+    if current_plan and current_workspace:
+        ws = current_workspace.get("workspace", {})
+        zones = list(ws.get("safety_zones", []))
+        if human_zone:
+            zones = [
+                {**z, "polygon": human_zone} if z.get("type") == "human_presence" else z
+                for z in zones
+            ]
+
+        obj_anchors = {o["id"]: o["centroid"] for o in ws.get("objects", [])}
+        sequence = current_plan.get("sequence", [])
+
+        for step in sequence[current_step_index:]:
+            step_idx = step.get("step", 1) - 1
+            obj_id = step.get("object_id")
+
+            if obj_id and obj_id in positions and obj_id in obj_anchors:
+                anchor = obj_anchors[obj_id]
+                cur = positions[obj_id]["centroid"]
+                if check_drift((cur["x"], cur["y"]), (anchor["x"], anchor["y"])):
+                    stale_steps.append(step_idx)
+
+            frm = step.get("from", {})
+            to = step.get("to", {})
+            if frm and to and not step.get("skip"):
+                if _path_crosses_any_zone(
+                    frm.get("x", 0), frm.get("y", 0),
+                    to.get("x", 0), to.get("y", 0),
+                    zones,
+                ):
+                    blocked_steps.append(step_idx)
+
+    cooldown_clear = (time.time() - last_replan_time) >= REPLAN_COOLDOWN
+    needs_replan = bool(stale_steps or blocked_steps or lost_objects)
+    replanning = False
+
+    if needs_replan and cooldown_clear and not _replan_lock.locked():
+        replanning = True
+        asyncio.create_task(_auto_replan(frame_b64))
+
+    return {
+        "positions": positions,
+        "human_zone": human_zone,
+        "stale_steps": list(set(stale_steps)),
+        "blocked_steps": list(set(blocked_steps)),
+        "lost_objects": lost_objects,
+        "replanning": replanning,
+    }
+
+
+@app.post("/api/step/complete")
+async def step_complete(request: Request):
+    global current_step_index
+    body = await request.json()
+    idx = body.get("step_index")
+    if isinstance(idx, int) and idx == current_step_index:
+        current_step_index += 1
+    return {"step_index": current_step_index}
+
+
+# ============================================================
 # MAIN
 # ============================================================
 
