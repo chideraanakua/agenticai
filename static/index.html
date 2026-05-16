@@ -523,8 +523,19 @@
             >idle</span
           >
         </div>
-        <div class="panel-content">
+        <div class="panel-content" style="position:relative">
           <canvas class="sim-canvas" id="simCanvas"></canvas>
+          <div id="simPlaceholder" style="
+            position:absolute; inset:0; display:flex; flex-direction:column;
+            align-items:center; justify-content:center; gap:10px;
+            background:rgba(18,19,26,0.92); pointer-events:none;">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.5">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            <span style="color:rgba(255,255,255,0.35); font-size:12px; text-align:center; padding:0 24px">
+              Generate a sorting plan to view the simulation
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -854,6 +865,7 @@
 
           planData = await resp.json();
           renderSteps(planData);
+          addStepLabels();
           document.getElementById("btnExec").disabled = false;
           document.getElementById("planStatus").textContent =
             `${planData.sequence.length} steps — ${planData.strategy || ""}`;
@@ -958,6 +970,7 @@
         simZones = [];
       let simPose = { base: 0, s1: 0.25, s2: -0.4 };
       let clawSpread = 0.14;
+      let simLabels = [];
       let simHeld = null,
         simSorting = false,
         simStepIdx = -1;
@@ -1261,6 +1274,48 @@
         }
       }
 
+      function makeStepSprite(num) {
+        const c = document.createElement('canvas');
+        c.width = 64; c.height = 64;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = 'rgba(18,19,26,0.88)';
+        ctx.beginPath();
+        ctx.arc(32, 32, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(num), 32, 33);
+        const tex = new THREE.CanvasTexture(c);
+        const spr = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })
+        );
+        return spr;
+      }
+
+      function addStepLabels() {
+        simLabels.forEach(l => scene.remove(l));
+        simLabels = [];
+        if (!planData || !planData.sequence) return;
+        const ph = document.getElementById('simPlaceholder');
+        if (ph) ph.style.display = 'none';
+        for (const step of planData.sequence) {
+          const block = simBlocks.find(b => b.userData.id === step.object_id);
+          if (!block) continue;
+          const spr = makeStepSprite(step.step);
+          spr.scale.set(0.7, 0.7, 1);
+          spr.position.set(block.position.x, block.position.y + 1.0, block.position.z);
+          spr.userData.block = block;
+          scene.add(spr);
+          simLabels.push(spr);
+          block.userData.labelSprite = spr;
+        }
+      }
+
       // ============================================================
       // SIMULATION ANIMATION
       // ============================================================
@@ -1440,6 +1495,11 @@
             z.material.opacity = 0.12 + 0.04 * Math.sin(simTime * 3);
         });
 
+        simLabels.forEach(lbl => {
+          const b = lbl.userData.block;
+          if (b) lbl.position.set(b.position.x, b.position.y + 1.0, b.position.z);
+        });
+
         const ca = simTime * 0.06;
         camera.position.set(Math.sin(ca) * 11, 10, Math.cos(ca) * 9);
         camera.lookAt(0, 1, 0);
@@ -1490,6 +1550,7 @@
 
           updateSimWorkspace(workspaceData);
           renderSteps(planData);
+          addStepLabels();
 
           if (s.image_original) {
             try {
