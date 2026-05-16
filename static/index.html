@@ -1452,6 +1452,7 @@
         } else if (simPhase === "retract") {
           const stepEl = document.getElementById(`step-${step.step}`);
           if (stepEl) stepEl.classList.add("done");
+          pingStepComplete(simStepIdx);
           simStepIdx++;
           simPhase = "pause";
           setTimeout(beginSimStep, 300);
