@@ -13,50 +13,95 @@ The input is not limited to a table scene — the system works on any image (war
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.10+, FastAPI, Uvicorn |
-| AI Vision | Google Gemini 2.5 Flash (object detection + spatial reasoning) |
-| Computer Vision | OpenCV 4.13, Pillow, NumPy |
+| AI Vision | Google Gemini (object detection + spatial reasoning) |
+| Computer Vision | OpenCV 4.13 (CSRT tracking, contour refinement), MediaPipe Pose (human zone tracking) |
 | Database | SQLite (`sessions.db`) |
 | Frontend | Vanilla JS + Three.js (3D sim) + Chart.js (dashboard) |
-| Config | python-dotenv, `.env` for `GEMINI_API_KEY` |
+| Config | python-dotenv, `.env` for `GEMINI_API_KEY` and `GEMINI_MODEL` |
 
 ## Project Structure
 
 ```
 safearc/
-├── server.py            # FastAPI app — API routes, session tracking
-├── gemini_agents.py     # Two-agent AI pipeline (detect + plan)
-├── storage.py           # SQLite session persistence + analytics
-├── detect.py            # Standalone CLI detection tool
-├── feed_photo.py        # CLI tool to push a photo into running server
+├── server.py                   # FastAPI app — API routes, session tracking, video pipeline
+├── gemini_agents.py            # Two-agent AI pipeline (detect + plan)
+├── tracker.py                  # Frame-level tracking (CSRT objects, MediaPipe human zone)
+├── storage.py                  # SQLite session persistence + analytics
+├── detect.py                   # Standalone CLI detection tool
+├── feed_photo.py               # CLI tool to push a photo into running server
 ├── requirements.txt
-├── .env                 # GEMINI_API_KEY (not committed)
+├── .env                        # GEMINI_API_KEY, GEMINI_MODEL (not committed)
+├── pose_landmarker_lite.task   # MediaPipe model — auto-downloaded on first run (not committed)
 └── static/
-    ├── index.html       # 4-panel browser demo (Three.js sim)
-    └── dashboard.html   # Session review + rating dashboard
+    ├── index.html              # 4-panel browser demo (Three.js sim + live video tracking)
+    └── dashboard.html          # Session review + rating dashboard
 ```
 
 ## Data Flow
 
+### Single-image mode (original)
 ```
 Camera / Upload
   → base64 → POST /api/detect
-  → Gemini Vision + OpenCV refinement
-  → workspace JSON stored in-memory + SQLite
-  → annotated canvas displayed
+  → Gemini Vision + OpenCV refinement → workspace JSON
+  → workspace stored in-memory + SQLite, annotated canvas displayed
 
   → POST /api/plan
-  → Gemini planner (fallback: heuristic)
-  → safety enforcement pass
-  → plan JSON stored
-  → step list displayed
+  → Gemini planner (fallback: heuristic) → safety enforcement pass
+  → plan JSON stored, step list displayed
 
-  → "Execute in sim"
-  → Three.js animation loop
-  → session saved to SQLite
-  → user rates 1–5 → stored in DB → dashboard
+  → "Execute in sim" → Three.js animation loop
+  → session saved to SQLite → user rates 1–5 → dashboard
 ```
 
+### Video tracking mode (new — `video-support` branch)
+```
+Camera live feed (5fps frame loop)
+  → POST /api/video/frame (no Gemini)
+      → CSRT tracker updates all object positions
+      → MediaPipe Pose updates human safety zone polygon
+      → drift check: |current_centroid - anchor| > 0.05 → stale step
+      → path check: updated zone intersects carry path → blocked step
+      → stale/blocked highlights pushed to step list UI
+      → live bounding boxes redrawn on canvas overlay
+
+  → if stale/blocked + cooldown (8s) elapsed:
+      → _auto_replan() [background asyncio task]
+          → Gemini Agent 1 re-detect
+          → CSRT trackers re-initialised
+          → Gemini Agent 2 re-plan
+          → new plan + workspace pushed via WS /ws/unity
+          → frontend rebuilds Three.js scene + auto-executes
+
+  → POST /api/step/complete (frontend ping per animation step)
+      → server advances current_step_index
+      → completed steps excluded from drift checks
+```
+
+## Key Design Decisions
+
+- **Gemini only at boundaries** — Gemini is called at initialisation and on auto-replan triggers only. All inter-frame tracking (CSRT + MediaPipe) runs locally with no API cost.
+- **8-second replan cooldown** — prevents quota exhaustion on Gemini free tier (15 req/min); each replan costs 2 requests (detect + plan).
+- **Grace window after detection** — `last_replan_time` is set to `time.time()` in `_init_trackers()`, not 0.0, so the first tracking frame cannot trigger an immediate replan.
+- **Retry on quota errors** — `_gemini_with_retry()` retries both agents up to 3× with 5→15→30s backoff; heuristic fallback fires if all retries exhaust.
+- **Compact planning JSON** — workspace sent to Agent 2 uses `separators=(',',':')` and 2dp coordinates (~35% token reduction vs original).
+- **GEMINI_MODEL env var** — defaults to `gemini-2.5-flash`; swap to `gemini-2.0-flash-lite` for higher free-tier rate limits during testing.
+
 ## Changelog
+
+### 2026-05-15 — Video tracking pipeline (`video-support` branch)
+- **Feat:** `tracker.py` — `ObjectTracker` (OpenCV CSRT per object) and `HumanZoneTracker` (MediaPipe Pose Tasks API) provide frame-level position updates without Gemini calls. MediaPipe model auto-downloaded on first use.
+- **Feat:** `POST /api/video/frame` — runs CSRT + MediaPipe each frame, checks drift and path-crossing, triggers `_auto_replan()` when issues found and 8s cooldown elapsed.
+- **Feat:** `POST /api/step/complete` — frontend pings per animation step; server advances `current_step_index` so completed steps are excluded from drift checks.
+- **Feat:** `WS /ws/unity` — repurposed from dead Unity code into a push-only channel; server pushes new plan + workspace to all connected clients after auto-replan.
+- **Feat:** Live bounding box overlay on camera feed — transparent canvas over video, updated each tracking frame with category-coloured boxes and labels.
+- **Feat:** Tracking status badge on camera panel — `● tracking` (green) / `⟳ recalculating…` (amber).
+- **Feat:** Stale (amber) and blocked (red) step highlighting in plan panel — updated each frame to reflect current tracker state.
+- **Feat:** WebSocket replan handler in frontend — receives new plan, rebuilds Three.js scene, auto-executes without user interaction.
+- **Fix:** Camera feed was permanently hidden after `scanWorkspace()` snapshot capture. Now restores automatically when detection completes.
+- **Fix:** `last_replan_time` was initialised to `0.0` (epoch), causing the first tracking frame to always trigger a spurious replan. Fixed by setting it to `time.time()` in `_init_trackers()`.
+- **Fix:** Gemini 429/quota errors were unhandled crashes. `_gemini_with_retry()` now retries both agents up to 3× with 5→15→30s backoff.
+- **Fix:** Planning JSON compacted (`separators=(',',':')`, 2dp coords) to reduce token usage ~35% and stay within free-tier limits.
 
 ### 2026-05-13 — Pre-demo fixes
 - **Bug fix:** Safety enforcement (`_enforce_safety()`) was skipped when Gemini succeeded — it only ran on the heuristic fallback path. Fixed so it always runs.
