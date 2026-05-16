@@ -709,6 +709,21 @@
 
           drawAnnotations(sourceImage, workspaceData);
           updateSimWorkspace(workspaceData);
+
+          // Restore live feed and draw initial bounding boxes from detection
+          if (stream) {
+            document.getElementById("camera-feed").style.display = "block";
+            document.getElementById("snapshot-img").style.display = "none";
+            const initialPositions = {};
+            workspaceData.workspace.objects.forEach(obj => {
+              const bb = obj.bounding_box;
+              initialPositions[obj.id] = {
+                centroid: obj.centroid,
+                bbox: [bb.top_left.x, bb.top_left.y, bb.bottom_right.x, bb.bottom_right.y],
+              };
+            });
+            _drawLiveOverlay(initialPositions);
+          }
         } catch (e) {
           document.getElementById("objCount").textContent = "error";
           document.getElementById("objCount").style.color = "var(--red)";
