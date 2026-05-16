@@ -1519,6 +1519,177 @@
 
       initSim();
 
+      // ============================================================
+      // LIVE OVERLAY (bounding boxes on camera feed)
+      // ============================================================
+
+      function _videoRenderRect() {
+        const vid = document.getElementById("camera-feed");
+        const vw = vid.clientWidth, vh = vid.clientHeight;
+        const nw = vid.videoWidth || vw, nh = vid.videoHeight || vh;
+        const videoAR = nw / nh, elemAR = vw / vh;
+        let rw, rh, rx, ry;
+        if (videoAR > elemAR) {
+          rw = vw; rh = vw / videoAR; rx = 0; ry = (vh - rh) / 2;
+        } else {
+          rh = vh; rw = vh * videoAR; rx = (vw - rw) / 2; ry = 0;
+        }
+        return { x: rx, y: ry, w: rw, h: rh };
+      }
+
+      function _normToOverlay(nx, ny) {
+        const r = _videoRenderRect();
+        return { x: r.x + nx * r.w, y: r.y + ny * r.h };
+      }
+
+      function _drawLiveOverlay(positions) {
+        const canvas = document.getElementById("live-overlay");
+        if (!canvas) return;
+
+        const vid = document.getElementById("camera-feed");
+        canvas.width = vid.clientWidth;
+        canvas.height = vid.clientHeight;
+
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!positions || !workspaceData) return;
+
+        const ws = workspaceData.workspace;
+        const labelMap = {}, colorMap = {};
+        ws.objects.forEach(obj => {
+          labelMap[obj.id] = obj.label;
+          colorMap[obj.id] = CAT_COLORS[obj.category] || "#888";
+        });
+
+        for (const [objId, pos] of Object.entries(positions)) {
+          const [nx1, ny1, nx2, ny2] = pos.bbox;
+          const p1 = _normToOverlay(nx1, ny1);
+          const p2 = _normToOverlay(nx2, ny2);
+          const color = colorMap[objId] || "#888";
+          const label = labelMap[objId] || objId;
+
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+
+          ctx.font = "bold 11px system-ui";
+          const tw = ctx.measureText(label).width;
+          ctx.fillStyle = color + "cc";
+          ctx.fillRect(p1.x, p1.y - 18, tw + 8, 18);
+          ctx.fillStyle = "#fff";
+          ctx.fillText(label, p1.x + 4, p1.y - 4);
+        }
+      }
+
+      function _clearLiveOverlay() {
+        const canvas = document.getElementById("live-overlay");
+        if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // ============================================================
+      // VIDEO TRACKING + WEBSOCKET
+      // ============================================================
+
+      function _setTrackingBadge(text, color) {
+        const b = document.getElementById("trackingBadge");
+        if (!b) return;
+        b.textContent = text;
+        b.style.color = color;
+        b.style.display = "block";
+      }
+
+      function startFrameLoop() {
+        if (_frameLoop) return;
+        _offscreenCanvas = document.createElement("canvas");
+        _offscreenCanvas.width = 320;
+        _offscreenCanvas.height = 240;
+        _frameLoop = setInterval(sendVideoFrame, 200);
+        _setTrackingBadge("● tracking", "var(--green)");
+      }
+
+      function stopFrameLoop() {
+        if (_frameLoop) { clearInterval(_frameLoop); _frameLoop = null; }
+        const b = document.getElementById("trackingBadge");
+        if (b) b.style.display = "none";
+        _clearLiveOverlay();
+      }
+
+      async function sendVideoFrame() {
+        const video = document.getElementById("camera-feed");
+        if (!video || !video.videoWidth) return;
+        const ctx = _offscreenCanvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, _offscreenCanvas.width, _offscreenCanvas.height);
+        const frame = _offscreenCanvas.toDataURL("image/jpeg", 0.6);
+        try {
+          const resp = await fetch(`${API}/api/video/frame`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ frame }),
+          });
+          if (!resp.ok) return;
+          handleFrameResponse(await resp.json());
+        } catch (_) {}
+      }
+
+      function handleFrameResponse(data) {
+        _drawLiveOverlay(data.positions);
+        document.querySelectorAll(".step-item.stale, .step-item.blocked")
+          .forEach(el => el.classList.remove("stale", "blocked"));
+        for (const idx of (data.stale_steps || [])) {
+          const el = document.getElementById(`step-${idx + 1}`);
+          if (el && !el.classList.contains("done")) el.classList.add("stale");
+        }
+        for (const idx of (data.blocked_steps || [])) {
+          const el = document.getElementById(`step-${idx + 1}`);
+          if (el && !el.classList.contains("done")) el.classList.add("blocked");
+        }
+        if (data.replanning) {
+          const s = document.getElementById("simStatus");
+          if (s) { s.textContent = "recalculating…"; s.style.color = "var(--amber)"; }
+          _setTrackingBadge("⟳ recalculating…", "var(--amber)");
+        } else if (_frameLoop) {
+          _setTrackingBadge("● tracking", "var(--green)");
+        }
+      }
+
+      function pingStepComplete(idx) {
+        fetch(`${API}/api/step/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ step_index: idx }),
+        }).catch(() => {});
+      }
+
+      function initWebSocket() {
+        if (_simWs) return;
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        _simWs = new WebSocket(`${proto}://${location.host}/ws/unity`);
+
+        _simWs.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type !== "replan") return;
+            if (data.workspace) {
+              workspaceData = data.workspace;
+              updateSimWorkspace(workspaceData);
+            }
+            planData = data.plan;
+            renderSteps(planData);
+            document.getElementById("planStatus").textContent =
+              `${planData.sequence.length} steps — replanned`;
+            _setTrackingBadge("● tracking", "var(--green)");
+            simPlan = null;
+            simSorting = false;
+            executePlan();
+          } catch (_) {}
+        };
+
+        _simWs.onclose = () => { _simWs = null; setTimeout(initWebSocket, 3000); };
+      }
+
+      initWebSocket();
+
       async function maybeRestoreSession() {
         const sid = new URLSearchParams(location.search).get("session");
         if (!sid) return;
