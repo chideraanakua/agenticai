@@ -572,6 +572,9 @@
       let planData = null;
       let sourceImage = null;
       let _logPoll = null;
+      let _frameLoop = null;
+      let _offscreenCanvas = null;
+      let _simWs = null;
 
       function startLogPolling(onLog) {
         _logPoll = setInterval(async () => {
@@ -604,6 +607,7 @@
           btn.textContent = "Start camera";
           document.getElementById("btnScan").disabled = true;
           overlay.classList.remove("hidden");
+          stopFrameLoop();
           return;
         }
 
@@ -619,6 +623,7 @@
           btn.textContent = "Stop camera";
           document.getElementById("btnScan").disabled = false;
           overlay.classList.add("hidden");
+          startFrameLoop();
         } catch (e) {
           const overlay = document.getElementById("cameraOverlay");
           overlay.classList.remove("hidden");
