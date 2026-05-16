@@ -5,3 +5,6 @@ __pycache__
 .venv/
 .DS_Store
 sessions.db
+*.pem
+*.task
+static/sessions/
