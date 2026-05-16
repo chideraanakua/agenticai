@@ -11,13 +11,14 @@ Usage:
     python detect_gemini.py photo.png --preview          # shows annotated image
 
 Setup:
-    pip install google-generativeai opencv-python numpy Pillow
+    pip install google-genai opencv-python numpy Pillow
     export GEMINI_API_KEY="your-key-here"
     
     Get your key from: https://aistudio.google.com/apikey (free tier works fine)
 """
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import cv2
 import numpy as np
 import json
@@ -114,8 +115,7 @@ def detect_objects_gemini(image_path):
         sys.exit(1)
 
     # Configure Gemini
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(GEMINI_MODEL)
+    client = genai.Client(api_key=api_key)
 
     # Load image
     img_cv = cv2.imread(image_path)
@@ -130,10 +130,11 @@ def detect_objects_gemini(image_path):
     print(f"Sending image ({w}x{h}) to Gemini {GEMINI_MODEL}...")
 
     # Call Gemini with image
-    response = model.generate_content(
-        [DETECTION_PROMPT, img_pil],
-        generation_config=genai.GenerationConfig(
-            temperature=0.0,  # low temp for consistent structured output
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[DETECTION_PROMPT, img_pil],
+        config=types.GenerateContentConfig(
+            temperature=0.0,
             max_output_tokens=8192,
         ),
     )

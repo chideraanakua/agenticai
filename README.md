@@ -90,7 +90,7 @@ export GEMINI_API_KEY="your-key-here"
 ### 4. Verify installation
 
 ```bash
-python -c "import fastapi, cv2, google.generativeai, numpy, PIL; print('All dependencies OK')"
+python -c "import fastapi, cv2, google.genai, numpy, PIL; print('All dependencies OK')"
 ```
 
 ---

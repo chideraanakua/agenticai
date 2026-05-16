@@ -12,11 +12,12 @@ Agent 2 (Sorting Planner):
     Falls back to heuristic if Gemini fails
 
 Install:
-    pip install google-generativeai opencv-python numpy Pillow
+    pip install google-genai opencv-python numpy Pillow
     export GEMINI_API_KEY="your-key-here"
 """
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import cv2
 import numpy as np
 import json
@@ -43,8 +44,7 @@ def _get_client():
                 "GEMINI_API_KEY not set. "
                 "Get a free key from https://aistudio.google.com/apikey"
             )
-        genai.configure(api_key=api_key)
-        _client = genai.GenerativeModel(GEMINI_MODEL)
+        _client = genai.Client(api_key=api_key)
     return _client
 
 
@@ -297,10 +297,11 @@ def detect_objects_hybrid(image_source, status_callback=None):
     h, w = img_cv.shape[:2]
 
     status("Sending to Gemini for object identification...")
-    model = _get_client()
-    response = model.generate_content(
-        [DETECTION_PROMPT, img_pil],
-        generation_config=genai.GenerationConfig(
+    client = _get_client()
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[DETECTION_PROMPT, img_pil],
+        config=types.GenerateContentConfig(
             temperature=0.0,
             max_output_tokens=8192,
         ),
@@ -494,10 +495,11 @@ def plan_sorting(workspace_data, status_callback=None):
     prompt = f"{PLANNING_PROMPT}\n\nWorkspace state:\n{workspace_summary}"
 
     try:
-        model = _get_client()
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
+        client = _get_client()
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
                 temperature=0.0,
                 max_output_tokens=8192,
             ),
