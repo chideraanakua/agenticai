@@ -414,6 +414,12 @@
         </div>
         <div class="panel-content">
           <video id="camera-feed" autoplay playsinline></video>
+          <canvas id="live-overlay" style="
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+          "></canvas>
           <img
             id="snapshot-img"
             style="
@@ -423,6 +429,19 @@
               object-fit: contain;
             "
           />
+          <div id="trackingBadge" style="
+            display: none;
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            background: rgba(0,0,0,0.72);
+            font-family: var(--mono);
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            z-index: 10;
+            pointer-events: none;
+          ">● tracking</div>
           <div class="camera-overlay" id="cameraOverlay">
             <div style="color: var(--muted); font-size: 13px">
               No camera active
