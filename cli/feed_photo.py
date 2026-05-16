@@ -20,7 +20,7 @@ import requests
 
 # Switch between detectors here:
 # from detect import detect_objects           # OpenCV (color-based, no API key needed)
-from detect import detect_objects_gemini as detect_objects  # Gemini (smarter, needs API key)
+from cli.detect import detect_objects_gemini as detect_objects  # Gemini (smarter, needs API key)
 
 def main():
     if len(sys.argv) < 2:
