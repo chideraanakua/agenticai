@@ -81,6 +81,7 @@ Camera / Upload
   - Banner is shown before the try block so failure messages are always visible to the user.
 
 ### 2026-05-13 — Pre-demo fixes
+- **Bug fix:** `_enforce_safety()` now deduplicates destinations — a candidate placement is rejected if another object was already relocated within 0.08 normalized units of it, preventing objects from being stacked at the same spot.
 - **Bug fix:** Safety enforcement (`_enforce_safety()`) was skipped when Gemini succeeded — it only ran on the heuristic fallback path. Fixed so it always runs.
 - **Bug fix:** `GEMINI_MODEL` had no default; crashes if env var missing. Now defaults to `gemini-2.5-flash`.
 - **Fix:** Confidence scores were hardcoded to 0.92/0.78. Now derived from OpenCV `coverage` ratio — varies per object.
