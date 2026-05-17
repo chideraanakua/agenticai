@@ -452,6 +452,45 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 }"""
 
 
+def _eff_rating(s):
+    """Returns the best available integer rating for a session (1–5), defaulting to 3."""
+    r = s.get("rating") or s.get("effective_rating") or s.get("eval_score")
+    if r is None:
+        return 3
+    try:
+        return int(float(r))
+    except (ValueError, TypeError):
+        return 3
+
+
+def _score_similarity(current_ws, past_session):
+    """
+    Heuristic similarity score (0–1) between the current workspace and a
+    past session. Weighted: category overlap (0.6), object count (0.3),
+    zone count (0.1).
+    """
+    past_ws = past_session.get("workspace", {})
+    past_ws = past_ws.get("workspace", past_ws)
+
+    curr_cats = {o.get("category", "other") for o in current_ws.get("objects", [])}
+    past_cats = {o.get("category", "other") for o in past_ws.get("objects", [])}
+
+    if curr_cats or past_cats:
+        cat_sim = len(curr_cats & past_cats) / len(curr_cats | past_cats)
+    else:
+        cat_sim = 1.0
+
+    curr_n = len(current_ws.get("objects", []))
+    past_n = len(past_ws.get("objects", []))
+    obj_sim = 1.0 - abs(curr_n - past_n) / max(curr_n, past_n, 1)
+
+    curr_z = len(current_ws.get("safety_zones", []))
+    past_z = len(past_ws.get("safety_zones", []))
+    zone_sim = 1.0 - abs(curr_z - past_z) / max(curr_z, past_z, 1)
+
+    return round(0.6 * cat_sim + 0.3 * obj_sim + 0.1 * zone_sim, 4)
+
+
 def _build_few_shot_context(past_sessions):
     """
     Formats rated past sessions as compact few-shot examples injected into
@@ -461,9 +500,9 @@ def _build_few_shot_context(past_sessions):
     if not past_sessions:
         return ""
 
-    good = [s for s in past_sessions if s.get("rating", 0) >= 4]
-    bad  = [s for s in past_sessions if s.get("rating", 0) <= 2]
-    mid  = [s for s in past_sessions if s.get("rating", 0) == 3]
+    good = [s for s in past_sessions if _eff_rating(s) >= 4]
+    bad  = [s for s in past_sessions if _eff_rating(s) <= 2]
+    mid  = [s for s in past_sessions if _eff_rating(s) == 3]
     ordered = good[:2] + bad[:2] + mid[:1]
     if not ordered:
         return ""
@@ -551,9 +590,14 @@ def plan_sorting(workspace_data, past_sessions=None, status_callback=None):
             "sequence": [],
         }
 
-    few_shot = _build_few_shot_context(past_sessions or [])
+    ranked = sorted(
+        past_sessions or [],
+        key=lambda s: _score_similarity(ws, s),
+        reverse=True,
+    )
+    few_shot = _build_few_shot_context(ranked)
     if few_shot:
-        status(f"Injecting {len(past_sessions)} rated example(s) into planning prompt")
+        status(f"Injecting {len(ranked)} rated example(s) into planning prompt (similarity-ranked)")
 
     status("Sending workspace to Gemini for sorting plan...")
 
@@ -1025,8 +1069,13 @@ def evaluate_plan(workspace_data, plan, past_sessions=None):
         f"Steps:\n" + "\n".join(step_lines)
     )
 
-    # Past examples for reference
-    few_shot = _build_few_shot_context(past_sessions or [])
+    # Past examples for reference, similarity-ranked to current scene
+    ranked = sorted(
+        past_sessions or [],
+        key=lambda s: _score_similarity(ws, s),
+        reverse=True,
+    )
+    few_shot = _build_few_shot_context(ranked)
 
     prompt = f"{EVALUATION_PROMPT}{few_shot}\n\n{current_plan_text}"
 
