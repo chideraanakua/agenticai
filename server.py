@@ -61,6 +61,7 @@ current_step_index: int = 0       # which step the frontend animation is on
 last_replan_time: float = 0.0
 REPLAN_COOLDOWN: float = 8.0      # seconds between auto-replans
 _replan_lock = asyncio.Lock()
+_tracker_frame_size: tuple | None = None  # (w, h) CSRT was initialised at
 _ws_clients: list[WebSocket] = []
 
 
@@ -79,7 +80,7 @@ def _decode_frame_b64(frame_b64: str):
 
 def _init_trackers(workspace: dict, frame):
     """Initialise CSRT trackers and MediaPipe pose tracker from a fresh workspace."""
-    global tracker_pool, human_zone_tracker, current_step_index, last_replan_time
+    global tracker_pool, human_zone_tracker, current_step_index, last_replan_time, _tracker_frame_size
 
     if human_zone_tracker:
         human_zone_tracker.close()
@@ -106,7 +107,8 @@ def _init_trackers(workspace: dict, frame):
     human_zone_tracker = HumanZoneTracker(static_polygon=static_polygon)
     current_step_index = 0
     last_replan_time = time.time()  # grace period — no replan for REPLAN_COOLDOWN seconds after init
-    log(f"Trackers initialised: {len(tracker_pool)} objects")
+    _tracker_frame_size = (frame.shape[1], frame.shape[0])  # (w, h) for incoming frame resize
+    log(f"Trackers initialised: {len(tracker_pool)} objects at {_tracker_frame_size[0]}x{_tracker_frame_size[1]}")
 
 
 async def _push_to_clients(message: dict):
@@ -390,6 +392,10 @@ async def video_frame_endpoint(request: Request):
     frame = _decode_frame_b64(frame_b64)
     if frame is None:
         return JSONResponse({"error": "Could not decode frame"}, status_code=400)
+
+    # Resize to match the resolution CSRT was initialised at (frontend sends 320x240)
+    if _tracker_frame_size and (frame.shape[1], frame.shape[0]) != _tracker_frame_size:
+        frame = cv2.resize(frame, _tracker_frame_size)
 
     h, w = frame.shape[:2]
 
