@@ -430,12 +430,155 @@
         border: 1px solid rgba(226, 75, 74, 0.3);
         white-space: nowrap;
       }
+
+      /* ── Tooltip system ── */
+      [data-tip] { position: relative; }
+      [data-tip]::after {
+        content: attr(data-tip);
+        position: absolute;
+        top: calc(100% + 7px);
+        left: 50%;
+        transform: translateX(-50%);
+        width: max-content;
+        max-width: 230px;
+        background: #080910;
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 1.5;
+        padding: 6px 10px;
+        border-radius: 6px;
+        z-index: 400;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.12s 0.4s;
+        white-space: normal;
+        text-transform: none;
+        letter-spacing: 0;
+        font-family: var(--font);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      }
+      [data-tip]:hover::after { opacity: 1; }
+      [data-tip][data-tip-pos="up"]::after {
+        top: auto;
+        bottom: calc(100% + 7px);
+      }
+
+      /* ── Help button ── */
+      #helpBtn {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+        font-family: var(--font);
+        flex-shrink: 0;
+      }
+      #helpBtn:hover { border-color: var(--accent); color: var(--accent); }
+      #helpBtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+      /* ── Help panel ── */
+      #helpPanel {
+        position: fixed;
+        top: 49px;
+        right: 0;
+        width: 268px;
+        height: calc(100vh - 49px);
+        background: #10111d;
+        border-left: 1px solid var(--border);
+        z-index: 500;
+        overflow-y: auto;
+        padding: 16px;
+        transform: translateX(100%);
+        transition: transform 0.2s ease;
+      }
+      #helpPanel.open { transform: translateX(0); }
+      .help-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 18px;
+      }
+      .help-title span { font-size: 13px; font-weight: 500; }
+      .help-title button {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 20px;
+        cursor: pointer;
+        line-height: 1;
+        padding: 0;
+        transition: color 0.15s;
+      }
+      .help-title button:hover { color: var(--text); }
+      .help-section { margin-bottom: 18px; }
+      .help-section h3 {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--muted);
+        margin-bottom: 8px;
+        font-weight: 500;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 4px;
+      }
+      .help-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        color: var(--text);
+        line-height: 1.4;
+      }
+      .help-row small { color: var(--muted); font-size: 10px; display: block; margin-top: 1px; }
+      .help-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .help-swatch.sq { border-radius: 2px; }
+      .help-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        margin-bottom: 8px;
+        font-size: 12px;
+        color: var(--text);
+        line-height: 1.4;
+      }
+      .help-step-num {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
     </style>
   </head>
   <body>
     <div class="header">
       <h1><span>PHANTOM</span> LIMB</h1>
       <a class="nav-link" href="/dashboard" target="_blank">Dashboard ↗</a>
+      <button id="helpBtn" onclick="toggleHelp()" aria-label="Help and legend">?</button>
       <div class="status"></div>
     </div>
 
@@ -451,12 +594,61 @@
       </button>
     </div>
 
+    <!-- Help / legend panel -->
+    <div id="helpPanel">
+      <div class="help-title">
+        <span>How it works</span>
+        <button onclick="toggleHelp()">×</button>
+      </div>
+
+      <div class="help-section">
+        <h3>How to use</h3>
+        <div class="help-step"><div class="help-step-num">1</div><span>Start your camera (or upload a photo) and point it at your workspace</span></div>
+        <div class="help-step"><div class="help-step-num">2</div><span>Click <b>Scan workspace</b> — the AI identifies every object on screen</span></div>
+        <div class="help-step"><div class="help-step-num">3</div><span>Click <b>Generate plan</b> — the AI decides the safest order to sort them</span></div>
+        <div class="help-step"><div class="help-step-num">4</div><span>Click <b>Execute in sim</b> — watch the robot arm carry out the plan in 3D</span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>Object colour key</h3>
+        <div class="help-row"><div class="help-swatch" style="background:#378ADD"></div><span>Kitchen items</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#5dca7b"></div><span>Reading materials</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#d4537e"></div><span>Writing supplies</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#5d9eca"></div><span>Electronics</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#ef9f27"></div><span>Beverages</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#97c459"></div><span>Tools</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#888"></div><span>Everything else</span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>No-go zones (highlighted areas)</h3>
+        <div class="help-row"><div class="help-swatch sq" style="background:rgba(226,75,74,0.45);border:1px solid #e24b4a"></div><span>Person detected nearby<small>Robot stays out — any objects here will be skipped</small></span></div>
+        <div class="help-row"><div class="help-swatch sq" style="background:rgba(245,166,35,0.45);border:1px solid #f5a623"></div><span>Robot arm base area<small>Where the arm is mounted — kept clear</small></span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>Plan step colours</h3>
+        <div class="help-row"><div class="help-swatch" style="background:var(--border)"></div><span>Waiting to be done</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--accent)"></div><span>Currently moving</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--green)"></div><span>Completed</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--amber)"></div><span>Object has moved — plan updating<small>The AI noticed something shifted position</small></span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--red)"></div><span>Path is blocked<small>Something is in the way — AI is finding a new route</small></span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#555"></div><span>Skipped — no safe route found</span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>Live status indicator</h3>
+        <div class="help-row"><div class="help-swatch" style="background:var(--green)"></div><span><b>● tracking</b><small>Watching for changes in real time</small></span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--amber)"></div><span><b>⟳ recalculating</b><small>Something moved or is blocked — creating a new plan</small></span></div>
+      </div>
+    </div>
+
     <div class="grid">
       <!-- Panel 1: Camera / Input -->
       <div class="panel" id="p-camera">
         <div class="panel-header">
-          <span class="panel-label">Workspace input</span>
-          <span class="agent-label agent-1">Agent 1: perception</span>
+          <span class="panel-label" data-tip="Your camera or photo — point it at your workspace and hit 'Scan workspace'">Workspace input</span>
+          <span class="agent-label agent-1" data-tip="AI that identifies every object in the scene and marks where they are">Agent 1: perception</span>
         </div>
         <div class="panel-content">
           <video id="camera-feed" autoplay playsinline></video>
@@ -475,7 +667,7 @@
               object-fit: contain;
             "
           />
-          <div id="trackingBadge" style="
+          <div id="trackingBadge" data-tip="Watching for changes — the AI will update the plan if objects move" data-tip-pos="up" style="
             display: none;
             position: absolute;
             bottom: 8px;
@@ -499,6 +691,8 @@
             class="btn btn-primary"
             id="btnCamera"
             onclick="toggleCamera()"
+            data-tip-pos="up"
+            data-tip="Turn on your camera to show the AI your workspace"
           >
             Start camera
           </button>
@@ -507,6 +701,8 @@
             id="btnScan"
             onclick="scanWorkspace()"
             disabled
+            data-tip-pos="up"
+            data-tip="Take a snapshot and let the AI find all the objects (takes a few seconds)"
           >
             Scan workspace
           </button>
@@ -514,6 +710,8 @@
             class="btn btn-outline btn-sm"
             id="btnUpload"
             onclick="uploadImage()"
+            data-tip-pos="up"
+            data-tip="Use a saved photo instead of your camera"
           >
             Upload photo
           </button>
@@ -533,10 +731,11 @@
       <!-- Panel 2: Annotated Workspace -->
       <div class="panel" id="p-annotated">
         <div class="panel-header">
-          <span class="panel-label">Detected objects</span>
+          <span class="panel-label" data-tip="Everything the AI found in your workspace — coloured boxes show each object, red areas are zones the robot must avoid">Detected objects</span>
           <span
             class="panel-badge"
             id="objCount"
+            data-tip="How many objects and no-go zones were found"
             style="background: rgba(55, 138, 221, 0.15); color: var(--accent)"
             >—</span
           >
@@ -554,8 +753,8 @@
       <!-- Panel 3: Sorting Plan -->
       <div class="panel" id="p-plan">
         <div class="panel-header">
-          <span class="panel-label">Sorting plan</span>
-          <span class="agent-label agent-2">Agent 2: planner</span>
+          <span class="panel-label" data-tip="The robot's step-by-step plan for sorting your workspace — objects are grouped by type and moved safely">Sorting plan</span>
+          <span class="agent-label agent-2" data-tip="AI that decides the best order to sort the objects while keeping humans safe">Agent 2: planner</span>
         </div>
         <div class="steps-list" id="stepsList">
           <div class="empty-state" id="planEmpty">
@@ -566,7 +765,7 @@
         <!-- AI Evaluator card — shown after plan generation -->
         <div class="eval-card" id="evalCard">
           <div class="eval-header">
-            <span class="eval-label">AI Review</span>
+            <span class="eval-label" data-tip="An AI assessment of how good this sorting plan is, based on previous sessions">AI Review</span>
             <span class="eval-stars" id="evalStars"></span>
             <span class="eval-score" id="evalScore"></span>
           </div>
@@ -580,6 +779,8 @@
             id="btnPlan"
             onclick="generatePlan()"
             disabled
+            data-tip-pos="up"
+            data-tip="Ask the AI to create a sorting plan for your objects (takes a few seconds)"
           >
             Generate plan
           </button>
@@ -588,6 +789,8 @@
             id="btnExec"
             onclick="executePlan()"
             disabled
+            data-tip-pos="up"
+            data-tip="Watch the robot arm carry out the plan in 3D — a safe preview before any real movement"
           >
             Execute in sim
           </button>
@@ -607,10 +810,11 @@
       <!-- Panel 4: Three.js Simulation -->
       <div class="panel" id="p-sim">
         <div class="panel-header">
-          <span class="panel-label">Digital twin simulation</span>
+          <span class="panel-label" data-tip="A 3D robot arm carries out the sorting plan — see exactly what will happen before touching anything real">Digital twin simulation</span>
           <span
             class="panel-badge"
             id="simStatus"
+            data-tip="Current state of the simulation"
             style="background: rgba(93, 202, 123, 0.15); color: var(--green)"
             >idle</span
           >
@@ -950,6 +1154,9 @@
             color: ${color};
             ${numInfo.skip ? "opacity:0.55;" : ""}
         `;
+          tag.setAttribute("data-tip",
+            `${obj.label.replace(/_/g," ")} — ${obj.category}${numInfo.skip ? " · skipped, no safe route found" : ""}`
+          );
           tag.innerHTML = `
             <span class="tag-dot" style="background:${color}"></span>
             <span class="tag-num">${numInfo.num}</span>
@@ -963,7 +1170,12 @@
         for (const zone of ws.safety_zones) {
           const tag = document.createElement("span");
           tag.className = "zone-tag";
-          tag.textContent = `⚠ ${zone.label || "human"}`;
+          tag.setAttribute("data-tip",
+            zone.type === "robot_base"
+              ? "Where the robot arm is mounted — kept clear"
+              : "A person was detected here — the robot won't reach into this area"
+          );
+          tag.textContent = `⚠ ${zone.label || zone.type === "robot_base" ? "robot base" : "human"}`;
           strip.appendChild(tag);
         }
       }
@@ -1764,12 +1976,34 @@
       // VIDEO TRACKING + WEBSOCKET
       // ============================================================
 
+      function toggleHelp() {
+        const panel = document.getElementById("helpPanel");
+        const btn = document.getElementById("helpBtn");
+        const open = panel.classList.toggle("open");
+        btn.classList.toggle("active", open);
+      }
+
+      // Close help panel on click outside
+      document.addEventListener("click", e => {
+        const panel = document.getElementById("helpPanel");
+        const btn = document.getElementById("helpBtn");
+        if (panel.classList.contains("open") && !panel.contains(e.target) && e.target !== btn) {
+          panel.classList.remove("open");
+          btn.classList.remove("active");
+        }
+      });
+
       function _setTrackingBadge(text, color) {
         const b = document.getElementById("trackingBadge");
         if (!b) return;
         b.textContent = text;
         b.style.color = color;
         b.style.display = "block";
+        b.setAttribute("data-tip",
+          text === "● tracking"
+            ? "Watching for changes — the AI will update the plan if objects move"
+            : "Something moved or a path is blocked — creating a new plan"
+        );
       }
 
       function startFrameLoop() {
