@@ -586,10 +586,179 @@
         flex-shrink: 0;
         margin-top: 1px;
       }
+      /* ── Beginner guide modal ── */
+      #guideOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.72);
+        backdrop-filter: blur(4px);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      #guideOverlay.hidden { display: none; }
+      #guideModal {
+        background: #14151f;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        width: 100%;
+        max-width: 480px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+        overflow: hidden;
+      }
+      .guide-header {
+        padding: 28px 28px 20px;
+        text-align: center;
+        border-bottom: 1px solid var(--border);
+      }
+      .guide-logo {
+        font-size: 32px;
+        margin-bottom: 10px;
+        color: var(--accent);
+      }
+      .guide-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .guide-header p {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .guide-body { padding: 22px 28px; }
+      .guide-what {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--muted);
+        font-weight: 500;
+        margin-bottom: 14px;
+      }
+      .guide-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        margin-bottom: 16px;
+      }
+      .guide-icon {
+        font-size: 22px;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .guide-row-title {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 3px;
+      }
+      .guide-row-desc {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .guide-tip {
+        margin-top: 18px;
+        padding: 10px 14px;
+        background: rgba(55,138,221,0.08);
+        border: 1px solid rgba(55,138,221,0.2);
+        border-radius: 8px;
+        font-size: 12px;
+        color: var(--accent);
+        line-height: 1.5;
+      }
+      .guide-footer {
+        padding: 16px 28px 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid var(--border);
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .guide-noshow {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .guide-noshow input { accent-color: var(--accent); cursor: pointer; }
+      @media (max-width: 480px) {
+        .guide-header { padding: 20px 18px 16px; }
+        .guide-body { padding: 16px 18px; }
+        .guide-footer { padding: 12px 18px 18px; }
+        .guide-footer .btn { width: 100%; justify-content: center; }
+      }
     </style>
   </head>
   <body>
     <div id="tooltip"></div>
+
+    <!-- Beginner guide overlay -->
+    <div id="guideOverlay" class="hidden">
+      <div id="guideModal">
+        <div class="guide-header">
+          <div class="guide-logo">◈</div>
+          <h2>Welcome to Phantom Limb</h2>
+          <p>An AI-powered sorting engine that plans every move before the robot arm touches anything.</p>
+        </div>
+        <div class="guide-body">
+          <div class="guide-what">Here's how it works — 4 simple steps</div>
+
+          <div class="guide-row">
+            <div class="guide-icon">📷</div>
+            <div>
+              <div class="guide-row-title">Point your camera at the workspace</div>
+              <div class="guide-row-desc">Aim at a table with 3–10 objects in view. Works best in good lighting. You can also upload a photo instead.</div>
+            </div>
+          </div>
+
+          <div class="guide-row">
+            <div class="guide-icon">🔍</div>
+            <div>
+              <div class="guide-row-title">Click "Scan workspace"</div>
+              <div class="guide-row-desc">The AI looks at your scene, finds every object, and draws a coloured box around each one. Takes about 3–5 seconds.</div>
+            </div>
+          </div>
+
+          <div class="guide-row">
+            <div class="guide-icon">🗂️</div>
+            <div>
+              <div class="guide-row-title">Click "Generate plan"</div>
+              <div class="guide-row-desc">A second AI figures out the best order to sort the objects — grouping similar things together and avoiding any people nearby.</div>
+            </div>
+          </div>
+
+          <div class="guide-row">
+            <div class="guide-icon">🤖</div>
+            <div>
+              <div class="guide-row-title">Click "Execute in sim"</div>
+              <div class="guide-row-desc">Watch a 3D robot arm carry out the full sorting plan — a safe digital preview before anything moves in the real world.</div>
+            </div>
+          </div>
+
+          <div class="guide-tip">
+            💡 The red shaded areas on screen are <b>no-go zones</b> — the robot will never move into them. If a person is detected near an object, that step is safely skipped.
+          </div>
+        </div>
+        <div class="guide-footer">
+          <label class="guide-noshow">
+            <input type="checkbox" id="guideNoShow"> Don't show this again
+          </label>
+          <button class="btn btn-primary" onclick="closeGuide()">Get started →</button>
+        </div>
+      </div>
+    </div>
 
     <div class="header">
       <h1><span>PHANTOM</span> LIMB</h1>
@@ -657,6 +826,17 @@
         <div class="help-row"><div class="help-swatch" style="background:var(--green)"></div><span><b>● tracking</b><small>Watching for changes in real time</small></span></div>
         <div class="help-row"><div class="help-swatch" style="background:var(--amber)"></div><span><b>⟳ recalculating</b><small>Something moved or is blocked — creating a new plan</small></span></div>
       </div>
+
+      <button onclick="openGuide()" style="
+        width: 100%; margin-top: 4px;
+        background: transparent; border: 1px solid var(--border);
+        color: var(--muted); border-radius: 8px;
+        padding: 9px 0; font-size: 12px; cursor: pointer;
+        font-family: var(--font); transition: all 0.15s;
+      " onmouseenter="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+         onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+        ↩ Show beginner guide
+      </button>
     </div>
 
     <div class="grid">
@@ -2053,6 +2233,28 @@
           btn.classList.remove("active");
         }
       });
+
+      // ── Beginner guide ──
+      function openGuide() {
+        document.getElementById("guideOverlay").classList.remove("hidden");
+        // Close help panel if open
+        document.getElementById("helpPanel").classList.remove("open");
+        document.getElementById("helpBtn").classList.remove("active");
+      }
+      function closeGuide() {
+        document.getElementById("guideOverlay").classList.add("hidden");
+        if (document.getElementById("guideNoShow").checked) {
+          try { localStorage.setItem("guide_dismissed", "1"); } catch(_) {}
+        }
+      }
+      // Close on overlay backdrop click
+      document.getElementById("guideOverlay").addEventListener("click", e => {
+        if (e.target === document.getElementById("guideOverlay")) closeGuide();
+      });
+      // Show on first visit
+      (function () {
+        try { if (!localStorage.getItem("guide_dismissed")) openGuide(); } catch(_) { openGuide(); }
+      })();
 
       function _setTrackingBadge(text, color) {
         const b = document.getElementById("trackingBadge");
