@@ -135,6 +135,64 @@ def test_multiple_objects_inside_zone_all_skipped():
     print("PASS  test_multiple_objects_inside_zone_all_skipped")
 
 
+def test_same_category_objects_cluster_together():
+    """
+    Two beverage objects both have destinations inside the safety zone,
+    forcing both to be relocated. The second beverage should land near
+    the first (category-aware relocation), not at a random grid slot.
+    The electronics object should land far from both beverages.
+    """
+    objects = [
+        {"id": "obj_001", "category": "beverage"},
+        {"id": "obj_002", "category": "beverage"},
+        {"id": "obj_003", "category": "electronics"},
+    ]
+    plan = make_plan([
+        {
+            "step": 1, "action": "pick_and_place", "object_id": "obj_001",
+            "from": {"x": 0.40, "y": 0.70},  # safe pickup
+            "to":   {"x": 0.75, "y": 0.25},  # inside HAND_ZONE → force relocation
+            "reason": "move first beverage",
+        },
+        {
+            "step": 2, "action": "pick_and_place", "object_id": "obj_002",
+            "from": {"x": 0.40, "y": 0.80},  # safe pickup
+            "to":   {"x": 0.80, "y": 0.10},  # inside HAND_ZONE → force relocation
+            "reason": "move second beverage",
+        },
+        {
+            "step": 3, "action": "pick_and_place", "object_id": "obj_003",
+            "from": {"x": 0.40, "y": 0.60},  # safe pickup
+            "to":   {"x": 0.70, "y": 0.40},  # inside HAND_ZONE → force relocation
+            "reason": "move electronics",
+        },
+    ])
+    result, relocated = _enforce_safety(plan, SAFETY_ZONES, objects)
+
+    assert relocated == 3, f"Expected 3 relocations, got {relocated}"
+
+    steps = {s["object_id"]: s for s in result["sequence"]}
+    bev1 = steps["obj_001"]["to"]
+    bev2 = steps["obj_002"]["to"]
+    elec = steps["obj_003"]["to"]
+
+    bev_dist = ((bev1["x"] - bev2["x"]) ** 2 + (bev1["y"] - bev2["y"]) ** 2) ** 0.5
+    elec_bev1_dist = ((elec["x"] - bev1["x"]) ** 2 + (elec["y"] - bev1["y"]) ** 2) ** 0.5
+
+    assert bev_dist < 0.25, (
+        f"Beverage objects too far apart: {bev_dist:.3f} "
+        f"(bev1={bev1}, bev2={bev2})"
+    )
+    assert elec_bev1_dist > bev_dist, (
+        f"Electronics landed closer to bev1 than bev2 did: "
+        f"elec_dist={elec_bev1_dist:.3f}, bev_dist={bev_dist:.3f}"
+    )
+    print(
+        f"PASS  test_same_category_objects_cluster_together "
+        f"(bev_dist={bev_dist:.3f}, elec_dist={elec_bev1_dist:.3f})"
+    )
+
+
 if __name__ == "__main__":
     tests = [
         test_object_inside_zone_gets_skipped,
@@ -142,6 +200,7 @@ if __name__ == "__main__":
         test_object_outside_zone_path_crosses_zone_gets_relocated,
         test_destination_inside_zone_gets_relocated,
         test_multiple_objects_inside_zone_all_skipped,
+        test_same_category_objects_cluster_together,
     ]
     failures = []
     for t in tests:
