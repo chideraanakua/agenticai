@@ -269,6 +269,13 @@ async def evaluate_endpoint():
         )
     past_sessions = db.get_rated_sessions(limit=10)
     result = evaluate_plan(current_workspace, current_plan, past_sessions)
+    if current_session_id and result.get("predicted_score") is not None:
+        db.save_evaluation(
+            current_session_id,
+            result["predicted_score"],
+            result.get("critique", ""),
+            result.get("suggestions", []),
+        )
     return result
 
 

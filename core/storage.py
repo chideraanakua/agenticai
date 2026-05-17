@@ -39,9 +39,14 @@ def _connect() -> sqlite3.Connection:
 def init_db():
     with _connect() as conn:
         conn.execute(_SCHEMA)
-        # migrate existing DBs that predate the image columns
         existing = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
-        for col, typedef in [("image_original", "TEXT"), ("image_annotated", "TEXT")]:
+        for col, typedef in [
+            ("image_original",    "TEXT"),
+            ("image_annotated",   "TEXT"),
+            ("eval_score",        "REAL"),
+            ("eval_critique",     "TEXT"),
+            ("eval_suggestions",  "TEXT"),
+        ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE sessions ADD COLUMN {col} {typedef}")
         conn.commit()
@@ -91,6 +96,17 @@ def save_plan(session_id: str, plan: dict):
         conn.execute(
             "UPDATE sessions SET plan=?, step_count=?, skipped=? WHERE id=?",
             (json.dumps(plan), len(seq), skipped, session_id),
+        )
+        conn.commit()
+
+
+# ── evaluation ───────────────────────────────────────────────────────────────
+
+def save_evaluation(session_id: str, predicted_score, critique: str, suggestions: list):
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE sessions SET eval_score=?, eval_critique=?, eval_suggestions=? WHERE id=?",
+            (predicted_score, critique.strip(), json.dumps(suggestions), session_id),
         )
         conn.commit()
 
