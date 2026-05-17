@@ -12,11 +12,12 @@ Agent 2 (Sorting Planner):
     Falls back to heuristic if Gemini fails
 
 Install:
-    pip install google-generativeai opencv-python numpy Pillow
+    pip install google-genai opencv-python numpy Pillow
     export GEMINI_API_KEY="your-key-here"
 """
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import cv2
 import numpy as np
 import json
@@ -31,7 +32,7 @@ from io import BytesIO
 from dotenv import load_dotenv
 load_dotenv()
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 _client = None
 
 _RETRY_DELAYS = [5, 15, 30]  # seconds between retries on rate-limit
@@ -71,8 +72,7 @@ def _get_client():
                 "GEMINI_API_KEY not set. "
                 "Get a free key from https://aistudio.google.com/apikey"
             )
-        genai.configure(api_key=api_key)
-        _client = genai.GenerativeModel(GEMINI_MODEL)
+        _client = genai.Client(api_key=api_key)
     return _client
 
 
@@ -325,11 +325,12 @@ def detect_objects_hybrid(image_source, status_callback=None):
     h, w = img_cv.shape[:2]
 
     status("Sending to Gemini for object identification...")
-    model = _get_client()
+    client = _get_client()
     response = _gemini_with_retry(
-        lambda: model.generate_content(
-            [DETECTION_PROMPT, img_pil],
-            generation_config=genai.GenerationConfig(
+        lambda: client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[DETECTION_PROMPT, img_pil],
+            config=types.GenerateContentConfig(
                 temperature=0.0,
                 max_output_tokens=8192,
             ),
@@ -540,11 +541,12 @@ def plan_sorting(workspace_data, status_callback=None):
     prompt = f"{PLANNING_PROMPT}\n\nWorkspace state:\n{workspace_summary}"
 
     try:
-        model = _get_client()
+        client = _get_client()
         response = _gemini_with_retry(
-            lambda: model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
+            lambda: client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
                     temperature=0.0,
                     max_output_tokens=8192,
                 ),
@@ -733,41 +735,41 @@ def _compute_safe_area(safety_zones):
     Determines the safe rectangular region by detecting which side of
     the workspace each safety zone occupies.
 
-    A zone at the bottom shrinks safe_y_max.
-    A zone on the right shrinks safe_x_max.
-    A zone on the left grows safe_x_min.
-    A zone at the top grows safe_y_min.
-
-    This prevents the bug where a bottom-side zone (e.g. human feet)
-    was incorrectly shrinking the x boundary.
+    Two-pass approach:
+      Pass 1 — compute y constraints from all zones.
+      Pass 2 — apply x constraints only from zones that actually overlap
+                the resulting safe y range. Zones that are entirely above
+                or below the safe y band don't constrain x there.
     """
     safe_x_min, safe_x_max = 0.02, 0.95
     safe_y_min, safe_y_max = 0.02, 0.95
 
+    zone_bounds = []
     for zone in safety_zones:
         pts = zone.get("polygon", [])
         if not pts:
             continue
-
         zx_min = min(p["x"] for p in pts)
         zx_max = max(p["x"] for p in pts)
         zy_min = min(p["y"] for p in pts)
         zy_max = max(p["y"] for p in pts)
         zcx = (zx_min + zx_max) / 2
         zcy = (zy_min + zy_max) / 2
+        zone_bounds.append((zx_min, zx_max, zy_min, zy_max, zcx, zcy))
 
+        # Pass 1: y constraints
         if zcy > 0.55 and zy_min > 0.35:
-            # Zone is at the bottom — shrink safe y ceiling
             safe_y_max = min(safe_y_max, zy_min - 0.06)
         elif zcy < 0.45 and zy_max < 0.65:
-            # Zone is at the top — raise safe y floor
             safe_y_min = max(safe_y_min, zy_max + 0.06)
 
+    # Pass 2: x constraints only from zones overlapping the safe y range
+    for zx_min, zx_max, zy_min, zy_max, zcx, _ in zone_bounds:
+        if zy_max < safe_y_min or zy_min > safe_y_max:
+            continue
         if zcx > 0.55 and zx_min > 0.35:
-            # Zone is on the right — shrink safe x ceiling
             safe_x_max = min(safe_x_max, zx_min - 0.06)
         elif zcx < 0.45 and zx_max < 0.65:
-            # Zone is on the left — raise safe x floor
             safe_x_min = max(safe_x_min, zx_max + 0.06)
 
     # Clamp to valid workspace bounds

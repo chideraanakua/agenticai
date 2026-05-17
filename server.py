@@ -24,14 +24,14 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw
 import uvicorn
 
-from gemini_agents import (
+from core.gemini_agents import (
     detect_objects_hybrid,
     plan_sorting,
     category_to_color,
     _path_crosses_any_zone,
 )
 from tracker import ObjectTracker, HumanZoneTracker, check_drift
-import storage as db
+from core import storage as db
 
 db.init_db()
 
