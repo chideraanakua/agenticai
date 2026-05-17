@@ -142,6 +142,22 @@
   .delta-pos { color: var(--red); }
   .delta-neg { color: var(--green); }
   .delta-zero { color: var(--muted); }
+
+  /* Tooltip */
+  .tip {
+    display: inline-block; cursor: help;
+    border-bottom: 1px dashed var(--muted); position: relative;
+  }
+  .tip::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: #2a2d3a; border: 1px solid var(--border); color: var(--text);
+    font-size: 11px; font-weight: 400; line-height: 1.4; white-space: normal;
+    width: 200px; padding: 7px 10px; border-radius: 6px;
+    pointer-events: none; opacity: 0; transition: opacity 0.15s;
+    text-transform: none; letter-spacing: 0; z-index: 10;
+  }
+  .tip:hover::after { opacity: 1; }
 </style>
 </head>
 <body>
@@ -166,18 +182,18 @@
   </div>
 
   <div class="calib-panel" id="calibPanel" style="display:none">
-    <h2>Evaluator Calibration</h2>
+    <h2>Evaluator Calibration <span style="font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">— how accurately the AI predicts your ratings</span></h2>
     <div class="calib-metrics">
       <div class="calib-metric">
-        <div class="label">MAE</div>
+        <div class="label"><span class="tip" data-tip="Mean Absolute Error — average star difference between AI prediction and your actual rating. Lower is better. 0 = perfect, 1 = off by one star on average.">MAE</span></div>
         <div class="value" id="calibMAE">—</div>
       </div>
       <div class="calib-metric">
-        <div class="label">Bias</div>
+        <div class="label"><span class="tip" data-tip="Systematic lean of the AI. Negative = AI is too harsh (under-predicts). Positive = AI is too generous (over-predicts). Near 0 = well-calibrated.">Bias</span></div>
         <div class="value" id="calibBias">—</div>
       </div>
       <div class="calib-metric">
-        <div class="label">Samples</div>
+        <div class="label"><span class="tip" data-tip="Number of sessions where both an AI prediction and a human rating exist. More samples = more reliable calibration.">Samples</span></div>
         <div class="value accent" id="calibN">—</div>
       </div>
     </div>
@@ -186,9 +202,9 @@
         <tr>
           <th>Session</th>
           <th>Date</th>
-          <th>Actual ★</th>
-          <th>Predicted ★</th>
-          <th>Delta</th>
+          <th><span class="tip" data-tip="The star rating you gave this session in the dashboard.">Actual ★</span></th>
+          <th><span class="tip" data-tip="The score the AI evaluator predicted before you rated it.">Predicted ★</span></th>
+          <th><span class="tip" data-tip="Predicted minus Actual. Green = AI was too harsh. Red = AI was too generous. Grey = spot on.">Delta</span></th>
         </tr>
       </thead>
       <tbody id="calibBody"></tbody>
