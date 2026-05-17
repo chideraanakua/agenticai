@@ -39,9 +39,14 @@ def _connect() -> sqlite3.Connection:
 def init_db():
     with _connect() as conn:
         conn.execute(_SCHEMA)
-        # migrate existing DBs that predate the image columns
         existing = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
-        for col, typedef in [("image_original", "TEXT"), ("image_annotated", "TEXT")]:
+        for col, typedef in [
+            ("image_original",    "TEXT"),
+            ("image_annotated",   "TEXT"),
+            ("eval_score",        "REAL"),
+            ("eval_critique",     "TEXT"),
+            ("eval_suggestions",  "TEXT"),
+        ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE sessions ADD COLUMN {col} {typedef}")
         conn.commit()
@@ -95,6 +100,17 @@ def save_plan(session_id: str, plan: dict):
         conn.commit()
 
 
+# ── evaluation ───────────────────────────────────────────────────────────────
+
+def save_evaluation(session_id: str, predicted_score, critique: str, suggestions: list):
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE sessions SET eval_score=?, eval_critique=?, eval_suggestions=? WHERE id=?",
+            (predicted_score, critique.strip(), json.dumps(suggestions), session_id),
+        )
+        conn.commit()
+
+
 # ── feedback ─────────────────────────────────────────────────────────────────
 
 def save_feedback(session_id: str, rating: int, comment: str = ""):
@@ -140,7 +156,8 @@ def get_rated_sessions(min_rating: int = 1, max_rating: int = 5, limit: int = 20
     """Return sessions that have ratings and a saved plan, newest first."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, timestamp, rating, comment, obj_count, skipped, relocated, workspace, plan "
+            "SELECT id, timestamp, rating, comment, obj_count, skipped, relocated, "
+            "workspace, plan, eval_score, eval_critique, eval_suggestions "
             "FROM sessions "
             "WHERE rating IS NOT NULL AND rating BETWEEN ? AND ? AND plan IS NOT NULL "
             "ORDER BY timestamp DESC LIMIT ?",
@@ -153,6 +170,8 @@ def get_rated_sessions(min_rating: int = 1, max_rating: int = 5, limit: int = 20
             d["workspace"] = json.loads(d["workspace"])
         if d.get("plan"):
             d["plan"] = json.loads(d["plan"])
+        if d.get("eval_suggestions"):
+            d["eval_suggestions"] = json.loads(d["eval_suggestions"])
         result.append(d)
     return result
 

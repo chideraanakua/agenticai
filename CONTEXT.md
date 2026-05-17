@@ -57,8 +57,18 @@ Camera / Upload
   → Gemini planner (fallback: heuristic) → safety enforcement pass
   → plan JSON stored, step list displayed
 
-  → "Execute in sim" → Three.js animation loop
-  → session saved to SQLite → user rates 1–5 → dashboard
+  → "Execute in sim"
+  → Three.js animation loop
+  → session saved to SQLite
+
+  → POST /api/evaluate (auto-called after plan)
+  → Evaluator agent critiques plan vs past rated examples
+  → predicted score + critique + suggestions stored to DB
+  → AI Review card shown in sorting plan panel
+
+  → user rates 1–5 + comment → stored in DB
+  → next plan generation fetches rated sessions as few-shot examples
+  → evaluator critique also injected into few-shot context → loop closes
 ```
 
 ### Video tracking mode (new — `video-support` branch)
@@ -95,6 +105,22 @@ Camera live feed (5fps frame loop)
 - **GEMINI_MODEL env var** — defaults to `gemini-2.5-flash-lite`; swap to `gemini-2.0-flash-lite` for higher free-tier rate limits during testing.
 
 ## Changelog
+
+### 2026-05-17 — Few-shot learning loop, evaluator agent, category-aware relocation
+
+- **Fix: detected object numbers now sync with sorting plan (`static/index.html`)** — after plan generation, the detected objects canvas and tag strip are redrawn using plan step numbers (instead of detection order). Skipped objects get a grey dashed bounding box and strikethrough in the tag strip. Before plan generation, detection order is used as before.
+
+- **Fix: category-aware relocation in `_enforce_safety` (`core/gemini_agents.py`)** — when relocating an object whose destination or carry path is unsafe, candidates are now sorted by proximity to the centroid of already-placed objects in the same category. Previously picked the first available grid slot regardless of category, scattering same-category objects across the workspace. Unit test added: `test_same_category_objects_cluster_together` (6/6 passing).
+
+- **Feat: few-shot planning (`core/gemini_agents.py`, `core/storage.py`, `server.py`)** — `get_rated_sessions()` fetches rated sessions from SQLite. `_build_few_shot_context()` formats them as compact examples (good/bad/mediocre) injected into the Agent 2 planning prompt. Good plans (4–5★) show what to replicate; bad plans (1–2★) + user comment + AI critique show what to avoid. Planning temperature raised to 0.4 when examples are present (0.0 otherwise) so Gemini incorporates them rather than returning deterministic output.
+
+- **Feat: evaluator agent (`core/gemini_agents.py`, `server.py`)** — `evaluate_plan()` makes a separate Gemini call after planning. Uses the same few-shot context plus a compact summary of the current plan to predict a quality score (1–5), generate a one-sentence critique, and suggest 2–3 improvements. Endpoint: `POST /api/evaluate`.
+
+- **Feat: AI Review card (`static/index.html`)** — evaluator output shown in the sorting plan panel immediately after plan generation. Displays star rating, score badge (colour-coded green/amber/red), critique, and bullet suggestions. Card hidden until evaluator responds; silently skipped on failure.
+
+- **Feat: persist evaluator results (`core/storage.py`, `server.py`)** — `save_evaluation()` stores `eval_score`, `eval_critique`, `eval_suggestions` (JSON array) to three new SQLite columns. `init_db()` auto-migrates. `get_rated_sessions()` now returns these columns and deserialises `eval_suggestions`.
+
+- **Feat: evaluator critique fed back into planner (`core/gemini_agents.py`)** — `_build_few_shot_context()` includes the stored `eval_critique` alongside the user comment for each example, giving Gemini two feedback signals per session.
 
 ### 2026-05-16 — SDK migration, project restructure, sim labels, safe-area fix
 

@@ -542,6 +542,9 @@ def _build_few_shot_context(past_sessions):
             lines.append(f"  Spread  : {spread}")
         if comment:
             lines.append(f"  Feedback: \"{comment}\"")
+        eval_critique = (s.get("eval_critique") or "").strip()
+        if eval_critique:
+            lines.append(f"  AI critique: \"{eval_critique}\"")
         lines.append("")
 
     lines.append("KEY LESSONS:")

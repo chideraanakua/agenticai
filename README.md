@@ -120,8 +120,9 @@ The 4-panel interface:
 1. Click **Start camera** (or **Upload photo**)
 2. Point at a table with several objects
 3. Click **Scan workspace** — Agent 1 runs detection (3–5 s)
-4. Click **Generate plan** — Agent 2 creates the sorting sequence (2–3 s)
+4. Click **Generate plan** — Agent 2 creates the sorting sequence (2–3 s); an **AI Review** card appears with a predicted quality score, critique, and suggestions
 5. Click **Execute in sim** — watch the robot arm sort the objects
+6. Rate the session (1–5★) on the dashboard — ratings feed back into future plans as few-shot examples
 
 ### Accessing from a phone (ngrok)
 
@@ -194,6 +195,7 @@ PYTHONPATH=. python tests/test_enforce_safety.py
 | `/api/sessions`       | GET    | Session history (paginated, max 100)                 |
 | `/api/sessions/{id}`  | GET    | Single session detail                                |
 | `/api/feedback/{id}`  | POST   | Submit user rating (1–5) + comment                  |
+| `/api/evaluate`       | POST   | Run evaluator agent on current plan                  |
 | `/api/stats`          | GET    | Aggregate analytics                                  |
 
 ---
