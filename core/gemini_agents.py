@@ -489,10 +489,80 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 }"""
 
 
-def plan_sorting(workspace_data, status_callback=None):
+def _build_few_shot_context(past_sessions):
+    """
+    Formats rated past sessions as compact few-shot examples injected into
+    the planning prompt. Good plans (4-5★) show what to replicate; bad/mediocre
+    plans (1-3★) show what to avoid, with the user's comment explaining why.
+    """
+    if not past_sessions:
+        return ""
+
+    good = [s for s in past_sessions if s.get("rating", 0) >= 4]
+    bad  = [s for s in past_sessions if s.get("rating", 0) <= 2]
+    mid  = [s for s in past_sessions if s.get("rating", 0) == 3]
+    ordered = good[:2] + bad[:2] + mid[:1]
+    if not ordered:
+        return ""
+
+    lines = ["\n\n--- PAST RATED EXAMPLES ---"]
+    lines.append("Learn from these human-rated plans. Replicate good patterns; avoid bad ones.\n")
+
+    for s in ordered:
+        rating  = s.get("rating", "?")
+        comment = s.get("comment", "").strip()
+        ws      = s.get("workspace", {})
+        ws      = ws.get("workspace", ws)
+        plan    = s.get("plan", {})
+
+        quality = "GOOD" if rating >= 4 else ("BAD" if rating <= 2 else "MEDIOCRE")
+        stars   = "★" * int(rating) + "☆" * (5 - int(rating))
+
+        obj_summary = ", ".join(
+            f"{o['label']}({o['category']})"
+            for o in ws.get("objects", [])[:10]
+        )
+        zone_types = [z.get("type", "?") for z in ws.get("safety_zones", [])]
+
+        seq      = plan.get("sequence", [])
+        skipped  = sum(1 for st in seq if st.get("skip"))
+        reloc    = sum(1 for st in seq if "safety enforced" in (st.get("reason") or ""))
+        safe_seq = [st for st in seq if not st.get("skip")]
+        spread   = ""
+        if safe_seq:
+            xs = [st["to"]["x"] for st in safe_seq]
+            ys = [st["to"]["y"] for st in safe_seq]
+            spread = f"x=[{min(xs):.2f},{max(xs):.2f}] y=[{min(ys):.2f},{max(ys):.2f}]"
+
+        lines.append(f"[{quality} PLAN — {stars}]")
+        lines.append(f"  Objects : {obj_summary}")
+        lines.append(f"  Zones   : {', '.join(zone_types)}")
+        lines.append(f"  Stats   : {len(seq)} steps, {skipped} skipped, {reloc} relocated")
+        if spread:
+            lines.append(f"  Spread  : {spread}")
+        if comment:
+            lines.append(f"  Feedback: \"{comment}\"")
+        lines.append("")
+
+    lines.append("KEY LESSONS:")
+    lines.append("- Place same-category objects near each other (within 0.20 normalized units)")
+    lines.append("- Do NOT split same-category objects across a safety zone boundary")
+    lines.append("- Spread destinations across the full safe area — avoid lining up at the same y value")
+    lines.append("- Minimise relocations: choose destinations outside safety zones from the start")
+    lines.append("--- END EXAMPLES ---\n")
+    return "\n".join(lines)
+
+
+def plan_sorting(workspace_data, past_sessions=None, status_callback=None):
     """
     Gemini Agent 2: plans the sorting sequence.
     Falls back to heuristic if Gemini fails.
+
+    Args:
+        workspace_data: output of detect_objects_hybrid
+        past_sessions:  list of rated sessions from storage.get_rated_sessions()
+                        injected as few-shot examples into the planning prompt
+        status_callback: optional function(message) for progress
     """
     def status(msg):
         if status_callback:
@@ -510,6 +580,10 @@ def plan_sorting(workspace_data, status_callback=None):
             "clusters": [],
             "sequence": [],
         }
+
+    few_shot = _build_few_shot_context(past_sessions or [])
+    if few_shot:
+        status(f"Injecting {len(past_sessions)} rated example(s) into planning prompt")
 
     status("Sending workspace to Gemini for sorting plan...")
 
@@ -538,7 +612,7 @@ def plan_sorting(workspace_data, status_callback=None):
         ],
     }, separators=(",", ":"))  # no whitespace — cuts token count ~35%
 
-    prompt = f"{PLANNING_PROMPT}\n\nWorkspace state:\n{workspace_summary}"
+    prompt = f"{PLANNING_PROMPT}{few_shot}\n\nWorkspace state:\n{workspace_summary}"
 
     try:
         client = _get_client()
@@ -918,6 +992,110 @@ def _heuristic_plan(objects, safety_zones):
         "clusters": clusters,
         "sequence": sequence,
     }
+
+
+EVALUATION_PROMPT = """You are an expert evaluator for a robotic pick-and-place sorting system.
+
+Given a sorting plan and a set of past human-rated plans for reference, evaluate the current plan.
+
+Rate the plan on a scale of 1-5:
+1 = Very poor (unsafe destinations, no clustering, pile-ups)
+2 = Poor (some clustering but major issues)
+3 = Mediocre (clustering attempted but inter-cluster separation weak)
+4 = Good (clusters mostly correct, good spacing, few relocations)
+5 = Excellent (perfect clustering, full workspace utilised, minimal relocations)
+
+Respond ONLY with valid JSON, no markdown, no explanation:
+{
+    "predicted_score": 3,
+    "critique": "one sentence summary of the main issue",
+    "suggestions": [
+        "specific actionable suggestion 1",
+        "specific actionable suggestion 2"
+    ]
+}"""
+
+
+def evaluate_plan(workspace_data, plan, past_sessions=None):
+    """
+    Evaluator agent: critiques the generated plan against past rated examples.
+    Returns a predicted quality score (1-5), a one-sentence critique, and
+    2-3 actionable suggestions — before the user rates it.
+    """
+    ws = workspace_data.get("workspace", workspace_data)
+    objects = ws.get("objects", [])
+    safety_zones = ws.get("safety_zones", [])
+    seq = plan.get("sequence", [])
+
+    if not seq:
+        return {"predicted_score": None, "critique": "No plan to evaluate.", "suggestions": []}
+
+    # Compact current plan summary
+    skipped = sum(1 for s in seq if s.get("skip"))
+    reloc   = sum(1 for s in seq if "safety enforced" in (s.get("reason") or ""))
+    safe_seq = [s for s in seq if not s.get("skip")]
+
+    obj_summary = ", ".join(
+        f"{o['label']}({o['category']})" for o in objects[:10]
+    )
+    zone_types = [z.get("type", "?") for z in safety_zones]
+
+    step_lines = []
+    for s in seq:
+        if s.get("skip"):
+            step_lines.append(f"  step {s['step']}: {s.get('object_label','?')} — SKIPPED")
+        else:
+            step_lines.append(
+                f"  step {s['step']}: {s.get('object_label','?')} → "
+                f"({s['to']['x']:.2f},{s['to']['y']:.2f})"
+                + (" [relocated]" if "safety enforced" in (s.get("reason") or "") else "")
+            )
+
+    if safe_seq:
+        xs = [s["to"]["x"] for s in safe_seq]
+        ys = [s["to"]["y"] for s in safe_seq]
+        spread = f"x=[{min(xs):.2f},{max(xs):.2f}] y=[{min(ys):.2f},{max(ys):.2f}]"
+    else:
+        spread = "n/a"
+
+    current_plan_text = (
+        f"CURRENT PLAN TO EVALUATE:\n"
+        f"  Objects : {obj_summary}\n"
+        f"  Zones   : {', '.join(zone_types)}\n"
+        f"  Stats   : {len(seq)} steps, {skipped} skipped, {reloc} relocated\n"
+        f"  Spread  : {spread}\n"
+        f"Steps:\n" + "\n".join(step_lines)
+    )
+
+    # Past examples for reference
+    few_shot = _build_few_shot_context(past_sessions or [])
+
+    prompt = f"{EVALUATION_PROMPT}{few_shot}\n\n{current_plan_text}"
+
+    try:
+        client = _get_client()
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                max_output_tokens=512,
+            ),
+        )
+        result = _parse_json_response(response.text)
+        result.setdefault("predicted_score", None)
+        result.setdefault("critique", "")
+        result.setdefault("suggestions", [])
+        result["based_on"] = len(past_sessions or [])
+        return result
+    except Exception as e:
+        print(f"  [EVAL] Evaluation failed: {e}")
+        return {
+            "predicted_score": None,
+            "critique": f"Evaluation unavailable: {e}",
+            "suggestions": [],
+            "based_on": 0,
+        }
 
 
 def category_to_color(category):
