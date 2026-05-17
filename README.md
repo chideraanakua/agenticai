@@ -198,7 +198,7 @@ Each object includes a `coord_source` field — `"opencv"` if refined successful
 | Variable        | Required | Default             | Description                        |
 | --------------- | -------- | ------------------- | ---------------------------------- |
 | `GEMINI_API_KEY`| Yes      | —                   | Google AI Studio API key           |
-| `GEMINI_MODEL`  | No       | `gemini-2.5-flash`  | Gemini model to use                |
+| `GEMINI_MODEL`  | No       | `gemini-2.5-flash-lite`  | Gemini model to use             |
 
 ### Tunable parameters (`core/gemini_agents.py`)
 
