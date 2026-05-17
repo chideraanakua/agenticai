@@ -567,7 +567,7 @@ def plan_sorting(workspace_data, status_callback=None):
         status(f"Gemini planning failed ({e}), using heuristic")
         plan = _heuristic_plan(objects, safety_zones)
 
-    plan, relocated = _enforce_safety(plan, safety_zones)
+    plan, relocated = _enforce_safety(plan, safety_zones, objects)
     skipped = sum(1 for s in plan.get("sequence", []) if s.get("skip"))
     if relocated:
         status(f"Safety enforcement: relocated {relocated} target(s) outside safety zones")
@@ -645,7 +645,7 @@ def _in_any_zone(x, y, safety_zones):
     )
 
 
-def _enforce_safety(plan, safety_zones):
+def _enforce_safety(plan, safety_zones, objects=None):
     """
     Hard-constraint pass applied after both Gemini and heuristic planners.
 
@@ -655,11 +655,17 @@ def _enforce_safety(plan, safety_zones):
          ('from') to 'to' does not cross any safety zone polygon.
 
     If either condition fails, we scan safe_candidates for a replacement
-    destination that satisfies both. If none exists the step is marked
-    skip=True and will not be executed.
+    destination. Candidates are sorted by proximity to the centroid of
+    already-placed objects in the same category, so same-category objects
+    cluster together naturally even after relocation.
+
+    If no safe candidate exists the step is marked skip=True.
     """
     if not safety_zones or not plan.get("sequence"):
         return plan, 0
+
+    # Build object_id → category map for cluster-aware relocation
+    cat_map = {o["id"]: o.get("category", "other") for o in (objects or [])}
 
     sx_min, sx_max, sy_min, sy_max = _compute_safe_area(safety_zones)
     candidates = _generate_grid_positions(
@@ -671,6 +677,8 @@ def _enforce_safety(plan, safety_zones):
     ]
 
     used = []
+    # category → list of placed positions for that category
+    cat_placed = {}
     relocated = 0
     skipped = 0
 
@@ -678,6 +686,7 @@ def _enforce_safety(plan, safety_zones):
         frm = step.get("from", {})
         to = step["to"]
         fx, fy = frm.get("x", to["x"]), frm.get("y", to["y"])
+        category = cat_map.get(step.get("object_id"), "other")
 
         dest_unsafe = _in_any_zone(to["x"], to["y"], safety_zones)
         path_unsafe = _path_crosses_any_zone(fx, fy, to["x"], to["y"], safety_zones)
@@ -687,19 +696,32 @@ def _enforce_safety(plan, safety_zones):
         )
 
         if dest_unsafe or path_unsafe or dest_occupied:
+            # Sort candidates by distance to the centroid of same-category
+            # placements already made — pulls relocated objects toward their peers.
+            same_cat = cat_placed.get(category, [])
+            if same_cat:
+                cx = sum(p["x"] for p in same_cat) / len(same_cat)
+                cy = sum(p["y"] for p in same_cat) / len(same_cat)
+                ordered = sorted(
+                    safe_candidates,
+                    key=lambda c: (c["x"] - cx) ** 2 + (c["y"] - cy) ** 2,
+                )
+            else:
+                ordered = safe_candidates
+
             placed = False
-            for cand in safe_candidates:
+            for cand in ordered:
                 if any(
                     abs(cand["x"] - p["x"]) < 0.08 and abs(cand["y"] - p["y"]) < 0.08
                     for p in used
                 ):
                     continue
-                # Candidate destination must also have a safe carry path
                 if _path_crosses_any_zone(fx, fy, cand["x"], cand["y"], safety_zones):
                     continue
                 step["to"] = cand
                 step["reason"] = (step.get("reason") or "") + " [safety enforced]"
                 used.append(cand)
+                cat_placed.setdefault(category, []).append(cand)
                 relocated += 1
                 placed = True
                 break
@@ -713,6 +735,7 @@ def _enforce_safety(plan, safety_zones):
                 skipped += 1
         else:
             used.append(to)
+            cat_placed.setdefault(category, []).append(to)
 
     # Also fix cluster target_zones
     for cluster in plan.get("clusters", []):
