@@ -183,6 +183,38 @@ def get_rated_sessions(min_rating: int = 1, max_rating: int = 5, limit: int = 20
     return result
 
 
+def get_calibration_stats() -> dict:
+    """
+    Returns per-session predicted vs actual deltas and aggregate MAE/bias
+    for sessions where both eval_score and human rating exist.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, timestamp, rating, eval_score "
+            "FROM sessions "
+            "WHERE rating IS NOT NULL AND eval_score IS NOT NULL "
+            "ORDER BY timestamp DESC"
+        ).fetchall()
+    points = []
+    for r in rows:
+        delta = round(r["eval_score"] - r["rating"], 2)
+        points.append({
+            "id": r["id"],
+            "timestamp": r["timestamp"],
+            "actual": r["rating"],
+            "predicted": round(r["eval_score"], 2),
+            "delta": delta,
+        })
+    if points:
+        deltas = [abs(p["delta"]) for p in points]
+        biases = [p["delta"] for p in points]
+        mae = round(sum(deltas) / len(deltas), 3)
+        bias = round(sum(biases) / len(biases), 3)
+    else:
+        mae, bias = None, None
+    return {"points": points, "mae": mae, "bias": bias, "n": len(points)}
+
+
 def get_stats() -> dict:
     with _connect() as conn:
         total = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]

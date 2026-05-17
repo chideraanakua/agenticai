@@ -279,6 +279,11 @@ async def evaluate_endpoint():
     return result
 
 
+@app.get("/api/calibration")
+async def get_calibration():
+    return db.get_calibration_stats()
+
+
 @app.get("/api/stats")
 async def get_stats():
     return db.get_stats()
