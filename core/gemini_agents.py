@@ -1,5 +1,5 @@
 """
-gemini_agents.py — Phantom Limb AI Agents
+gemini_agents.py — Safearc AI Agents
 
 Agent 1 (Hybrid Detection):
     Gemini sees the full image → returns object names + rough bounding boxes

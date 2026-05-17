@@ -1,24 +1,24 @@
 # CONTEXT.md
 
-This file tracks the current state of SafeArc / Phantom Limb — what's implemented, design decisions made, and what changed over time. For how to run and develop in this repo, see CLAUDE.md.
+This file tracks the current state of SafeArc — what's implemented, design decisions made, and what changed over time. For how to run and develop in this repo, see CLAUDE.md.
 
 ## What It Is
 
-**Phantom Limb** (repo: `safearc`) is an AI-orchestrated workspace sorting and collision-avoidance system built for TechEx Hackathon Track 3: Robotics & Simulation. Feed any overhead image into the pipeline → AI identifies objects and human-presence zones → planner generates a collision-free pick-and-place sequence → robot arm executes in a browser-based Three.js simulation. Full pipeline runs in under 10 seconds.
+**Safearc** (repo: `safearc`) is an AI-orchestrated workspace sorting and collision-avoidance system built for TechEx Hackathon Track 3: Robotics & Simulation. Feed any overhead image into the pipeline → AI identifies objects and human-presence zones → planner generates a collision-free pick-and-place sequence → robot arm executes in a browser-based Three.js simulation. Full pipeline runs in under 10 seconds.
 
 The input is not limited to a table scene — the system works on any image (warehouse floor, lab bench, outdoor scene, etc.). The table is just the primary demo.
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Backend | Python 3.10+, FastAPI, Uvicorn |
-| AI SDK | `google-genai` (`genai.Client`) — **not** the deprecated `google-generativeai` |
-| AI Model | `gemini-2.5-flash-lite` (default; override via `GEMINI_MODEL` env var) |
+| Layer           | Technology                                                                                           |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
+| Backend         | Python 3.10+, FastAPI, Uvicorn                                                                       |
+| AI SDK          | `google-genai` (`genai.Client`) — **not** the deprecated `google-generativeai`                       |
+| AI Model        | `gemini-2.5-flash-lite` (default; override via `GEMINI_MODEL` env var)                               |
 | Computer Vision | OpenCV 4.13 (CSRT tracking, contour refinement), MediaPipe Pose (human zone tracking), Pillow, NumPy |
-| Database | SQLite (`sessions.db`) |
-| Frontend | Vanilla JS + Three.js (3D sim) + Chart.js (dashboard) |
-| Config | python-dotenv, `.env` for `GEMINI_API_KEY` and `GEMINI_MODEL` |
+| Database        | SQLite (`sessions.db`)                                                                               |
+| Frontend        | Vanilla JS + Three.js (3D sim) + Chart.js (dashboard)                                                |
+| Config          | python-dotenv, `.env` for `GEMINI_API_KEY` and `GEMINI_MODEL`                                        |
 
 ## Project Structure
 
@@ -47,6 +47,7 @@ safearc/
 ## Data Flow
 
 ### Single-image mode (original)
+
 ```
 Camera / Upload
   → base64 → POST /api/detect
@@ -72,6 +73,7 @@ Camera / Upload
 ```
 
 ### Video tracking mode (new — `video-support` branch)
+
 ```
 Camera live feed (5fps frame loop)
   → POST /api/video/frame (no Gemini)
@@ -141,6 +143,7 @@ Camera live feed (5fps frame loop)
 - **Tests (`tests/test_enforce_safety.py`)** — 5 unit tests covering: object inside zone → skip, object outside zone safe path → unchanged, outside zone path crosses zone → relocate, destination inside zone → relocate, multiple objects inside zone → all skipped. All 5 passing.
 
 ### 2026-05-15 — Video tracking pipeline (`video-support` branch)
+
 - **Feat:** `tracker.py` — `ObjectTracker` (OpenCV CSRT per object) and `HumanZoneTracker` (MediaPipe Pose Tasks API) provide frame-level position updates without Gemini calls. MediaPipe model auto-downloaded on first use.
 - **Feat:** `POST /api/video/frame` — runs CSRT + MediaPipe each frame, checks drift and path-crossing, triggers `_auto_replan()` when issues found and 8s cooldown elapsed.
 - **Feat:** `POST /api/step/complete` — frontend pings per animation step; server advances `current_step_index` so completed steps are excluded from drift checks.
@@ -177,6 +180,7 @@ Camera live feed (5fps frame loop)
   - Banner is shown before the try block so failure messages are always visible to the user.
 
 ### 2026-05-13 — Pre-demo fixes
+
 - **Bug fix:** `_enforce_safety()` now deduplicates destinations — a candidate placement is rejected if another object was already relocated within 0.08 normalized units of it, preventing objects from being stacked at the same spot.
 - **Bug fix:** Safety enforcement (`_enforce_safety()`) was skipped when Gemini succeeded — it only ran on the heuristic fallback path. Fixed so it always runs.
 - **Bug fix:** `GEMINI_MODEL` had no default; crashes if env var missing. Now defaults to a pinned model (later changed to `gemini-2.5-flash-lite`).
@@ -186,9 +190,10 @@ Camera live feed (5fps frame loop)
 - **Feat:** Live server log polling during Gemini calls — `/api/state` polled every 800ms, streamed into UI status elements.
 
 ### 2026-05-13 — Initial state
+
 - Two-agent pipeline fully implemented: Gemini + OpenCV hybrid detection, Gemini spatial planner with heuristic fallback, safety enforcement
 - **Unity dropped** — Three.js is now the sole simulation layer; `unity_scripts/` and `/ws/unity` WebSocket are dead code (kept for backward compat)
 - Dashboard with session review, per-session detail modal, and rating submission implemented
 - CONTEXT.md and CLAUDE.md created
 
-*Update this file whenever a meaningful feature lands, a design decision is made, or a known issue is resolved.*
+_Update this file whenever a meaningful feature lands, a design decision is made, or a known issue is resolved._

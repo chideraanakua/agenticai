@@ -511,7 +511,7 @@ async def step_complete(request: Request):
 
 if __name__ == "__main__":
     print("\n" + "=" * 54)
-    print("  PHANTOM LIMB — Pipeline Server")
+    print("  Safe Arc — Pipeline Server")
     print("  " + "-" * 50)
     print("  Browser demo:  http://localhost:8000")
     print("  Dashboard:     http://localhost:8000/dashboard")

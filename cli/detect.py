@@ -310,7 +310,7 @@ def draw_preview(img, workspace_data):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Phantom Limb — Gemini-powered workspace detection"
+        description="Safearc — Gemini-powered workspace detection"
     )
     parser.add_argument("image", help="Path to overhead workspace photo")
     parser.add_argument("-o", "--output", help="Save JSON to file")
@@ -353,8 +353,8 @@ def main():
             print(f"Saved preview → {args.save_preview}")
 
         if args.preview:
-            cv2.namedWindow("Phantom Limb — Gemini Detection", cv2.WINDOW_NORMAL)
-            cv2.imshow("Phantom Limb — Gemini Detection", preview)
+            cv2.namedWindow("Safearc — Gemini Detection", cv2.WINDOW_NORMAL)
+            cv2.imshow("Safearc — Gemini Detection", preview)
             print("\nPress any key to close preview...")
             cv2.waitKey(0)
             cv2.destroyAllWindows()

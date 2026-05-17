@@ -1,5 +1,5 @@
 """
-storage.py — SQLite session store for Phantom Limb
+storage.py — SQLite session store for Safearc
 Persists detect+plan sessions and user feedback ratings.
 """
 

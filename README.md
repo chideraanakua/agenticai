@@ -1,4 +1,4 @@
-# Phantom Limb
+# Safearc
 
 **Adaptive Spatial-Sorting & Safety Engine**
 Track 3: Robotics & Simulation
@@ -9,7 +9,7 @@ An AI-orchestrated pipeline that turns workspace chaos into collision-free robot
 
 ## What it does
 
-Point a camera at a messy table. Phantom Limb identifies every object, plans the optimal sorting sequence, enforces human safety zones, and executes the plan in a real-time 3D simulation — all in under 10 seconds.
+Point a camera at a messy table. Safearc identifies every object, plans the optimal sorting sequence, enforces human safety zones, and executes the plan in a real-time 3D simulation — all in under 10 seconds.
 
 ```
 Camera → Agent 1 (Gemini + OpenCV) → Agent 2 (Gemini) → Robot Arm Simulation
@@ -108,12 +108,12 @@ python server.py
 
 The 4-panel interface:
 
-| Panel           | Location     | Purpose                                                         |
-| --------------- | ------------ | --------------------------------------------------------------- |
-| Workspace input | Top left     | Camera feed or photo upload. Click "Scan workspace" to capture. |
-| Detected objects| Top right    | Annotated image with bounding boxes, labels, and safety zones.  |
-| Sorting plan    | Bottom left  | Step-by-step plan from Agent 2 with reasoning.                  |
-| Digital twin    | Bottom right | Three.js 3D simulation with robot arm executing the plan.       |
+| Panel            | Location     | Purpose                                                         |
+| ---------------- | ------------ | --------------------------------------------------------------- |
+| Workspace input  | Top left     | Camera feed or photo upload. Click "Scan workspace" to capture. |
+| Detected objects | Top right    | Annotated image with bounding boxes, labels, and safety zones.  |
+| Sorting plan     | Bottom left  | Step-by-step plan from Agent 2 with reasoning.                  |
+| Digital twin     | Bottom right | Three.js 3D simulation with robot arm executing the plan.       |
 
 **Demo flow:**
 
@@ -186,17 +186,17 @@ PYTHONPATH=. python tests/test_enforce_safety.py
 
 ## API reference
 
-| Endpoint              | Method | Purpose                                              |
-| --------------------- | ------ | ---------------------------------------------------- |
-| `/api/detect`         | POST   | Run hybrid detection on a base64 image               |
-| `/api/plan`           | POST   | Generate sorting plan from current workspace         |
-| `/api/workspace`      | POST   | Direct workspace injection (for testing)             |
-| `/api/state`          | GET    | Current server state (objects, zones, logs)          |
-| `/api/sessions`       | GET    | Session history (paginated, max 100)                 |
-| `/api/sessions/{id}`  | GET    | Single session detail                                |
-| `/api/feedback/{id}`  | POST   | Submit user rating (1–5) + comment                  |
-| `/api/evaluate`       | POST   | Run evaluator agent on current plan                  |
-| `/api/stats`          | GET    | Aggregate analytics                                  |
+| Endpoint             | Method | Purpose                                      |
+| -------------------- | ------ | -------------------------------------------- |
+| `/api/detect`        | POST   | Run hybrid detection on a base64 image       |
+| `/api/plan`          | POST   | Generate sorting plan from current workspace |
+| `/api/workspace`     | POST   | Direct workspace injection (for testing)     |
+| `/api/state`         | GET    | Current server state (objects, zones, logs)  |
+| `/api/sessions`      | GET    | Session history (paginated, max 100)         |
+| `/api/sessions/{id}` | GET    | Single session detail                        |
+| `/api/feedback/{id}` | POST   | Submit user rating (1–5) + comment           |
+| `/api/evaluate`      | POST   | Run evaluator agent on current plan          |
+| `/api/stats`         | GET    | Aggregate analytics                          |
 
 ---
 
@@ -235,17 +235,17 @@ Each object includes a `coord_source` field — `"opencv"` if refined successful
 
 ### Environment variables
 
-| Variable        | Required | Default             | Description                        |
-| --------------- | -------- | ------------------- | ---------------------------------- |
-| `GEMINI_API_KEY`| Yes      | —                   | Google AI Studio API key           |
-| `GEMINI_MODEL`  | No       | `gemini-2.5-flash-lite`  | Gemini model to use             |
+| Variable         | Required | Default                 | Description              |
+| ---------------- | -------- | ----------------------- | ------------------------ |
+| `GEMINI_API_KEY` | Yes      | —                       | Google AI Studio API key |
+| `GEMINI_MODEL`   | No       | `gemini-2.5-flash-lite` | Gemini model to use      |
 
 ### Tunable parameters (`core/gemini_agents.py`)
 
-| Parameter       | Default | Description                                                        |
-| --------------- | ------- | ------------------------------------------------------------------ |
-| `padding_ratio` | `0.15`  | Crop expansion for OpenCV refinement. Increase if boxes are missed.|
-| `SAFETY_MARGIN` | `0.05`  | Extra buffer around human zones (normalized coords).               |
+| Parameter       | Default | Description                                                         |
+| --------------- | ------- | ------------------------------------------------------------------- |
+| `padding_ratio` | `0.15`  | Crop expansion for OpenCV refinement. Increase if boxes are missed. |
+| `SAFETY_MARGIN` | `0.05`  | Extra buffer around human zones (normalized coords).                |
 
 ---
 
@@ -275,5 +275,5 @@ pip install opencv-python-headless
 
 ## Team
 
-**Phantom Limb** — the robot arm that thinks before it moves.
+**Safearc** — the robot arm that thinks before it moves.
 Built for TechEx Hackathon — Track 3: Robotics & Simulation.
