@@ -136,6 +136,27 @@ def get_session(session_id: str) -> dict | None:
     return d
 
 
+def get_rated_sessions(min_rating: int = 1, max_rating: int = 5, limit: int = 20) -> list[dict]:
+    """Return sessions that have ratings and a saved plan, newest first."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, timestamp, rating, comment, obj_count, skipped, relocated, workspace, plan "
+            "FROM sessions "
+            "WHERE rating IS NOT NULL AND rating BETWEEN ? AND ? AND plan IS NOT NULL "
+            "ORDER BY timestamp DESC LIMIT ?",
+            (min_rating, max_rating, limit),
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        if d.get("workspace"):
+            d["workspace"] = json.loads(d["workspace"])
+        if d.get("plan"):
+            d["plan"] = json.loads(d["plan"])
+        result.append(d)
+    return result
+
+
 def get_stats() -> dict:
     with _connect() as conn:
         total = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
