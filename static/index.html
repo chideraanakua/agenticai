@@ -705,7 +705,17 @@
         other: "#888",
       };
 
-      function drawAnnotations(imgSrc, data) {
+      // Returns a numFn for drawAnnotations/renderTagStrip that uses plan step order.
+      // Call after planData is set. numFn(obj, idx) → {num: string, skip: bool}
+      function makePlanNumFn(plan) {
+        const stepMap = {};
+        for (const step of plan.sequence) {
+          stepMap[step.object_id] = { num: String(step.step), skip: !!step.skip };
+        }
+        return (obj, idx) => stepMap[obj.id] || { num: String(idx + 1), skip: false };
+      }
+
+      function drawAnnotations(imgSrc, data, numFn = null) {
         document.getElementById("annotEmpty").style.display = "none";
         const canvas = document.getElementById("annotated-canvas");
         const ctx = canvas.getContext("2d");
@@ -765,27 +775,29 @@
               y1 = bb.top_left.y * h;
             const x2 = bb.bottom_right.x * w,
               y2 = bb.bottom_right.y * h;
-            const color = CAT_COLORS[obj.category] || "#888";
+            const numInfo = numFn ? numFn(obj, idx) : { num: String(idx + 1), skip: false };
+            const color = numInfo.skip ? "#888" : (CAT_COLORS[obj.category] || "#888");
 
             // Bounding box
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
+            if (numInfo.skip) ctx.setLineDash([5, 3]);
             ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+            ctx.setLineDash([]);
 
             // Number badge — clean, small, always legible
-            const num = String(idx + 1);
             const r = 12;
             const bx = x1 + r,
               by = y1 + r;
             ctx.beginPath();
             ctx.arc(bx, by, r, 0, Math.PI * 2);
-            ctx.fillStyle = color;
+            ctx.fillStyle = numInfo.skip ? "rgba(136,136,136,0.7)" : color;
             ctx.fill();
             ctx.fillStyle = "white";
             ctx.font = `bold 12px system-ui`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(num, bx, by);
+            ctx.fillText(numInfo.num, bx, by);
             ctx.textAlign = "left";
             ctx.textBaseline = "alphabetic";
 
@@ -809,25 +821,27 @@
         renderTagStrip(data.workspace);
       }
 
-      function renderTagStrip(ws) {
+      function renderTagStrip(ws, numFn = null) {
         const strip = document.getElementById("tagStrip");
         if (!strip) return;
         strip.innerHTML = "";
         strip.style.display = "flex";
 
         ws.objects.forEach((obj, idx) => {
-          const color = CAT_COLORS[obj.category] || "#888";
+          const numInfo = numFn ? numFn(obj, idx) : { num: String(idx + 1), skip: false };
+          const color = numInfo.skip ? "#888" : (CAT_COLORS[obj.category] || "#888");
           const tag = document.createElement("span");
           tag.className = "obj-tag";
           tag.style.cssText = `
             background: ${color}1a;
             border-color: ${color}55;
             color: ${color};
+            ${numInfo.skip ? "opacity:0.55;" : ""}
         `;
           tag.innerHTML = `
             <span class="tag-dot" style="background:${color}"></span>
-            <span class="tag-num">${idx + 1}</span>
-            <span style="color:var(--text)">${obj.label.replace(/_/g, " ")}</span>
+            <span class="tag-num">${numInfo.num}</span>
+            <span style="color:var(--text);${numInfo.skip ? "text-decoration:line-through" : ""}">${obj.label.replace(/_/g, " ")}</span>
             <span style="color:var(--muted);font-size:10px">${obj.category}</span>
             <span class="tag-source">${obj.coord_source === "opencv" ? "cv2" : "~"}</span>
         `;
@@ -866,6 +880,11 @@
           planData = await resp.json();
           renderSteps(planData);
           addStepLabels();
+          if (workspaceData && sourceImage) {
+            const nf = makePlanNumFn(planData);
+            drawAnnotations(sourceImage, workspaceData, nf);
+            renderTagStrip(workspaceData.workspace, nf);
+          }
           document.getElementById("btnExec").disabled = false;
           document.getElementById("planStatus").textContent =
             `${planData.sequence.length} steps — ${planData.strategy || ""}`;
@@ -1552,6 +1571,7 @@
           renderSteps(planData);
           addStepLabels();
 
+          const nf = makePlanNumFn(planData);
           if (s.image_original) {
             try {
               const blob = await fetch(s.image_original).then(r => r.blob());
@@ -1560,9 +1580,11 @@
                 reader.onload = e => res(e.target.result);
                 reader.readAsDataURL(blob);
               });
-              drawAnnotations(dataUrl, workspaceData);
+              sourceImage = dataUrl;
+              drawAnnotations(dataUrl, workspaceData, nf);
             } catch (_) {}
           }
+          renderTagStrip(workspaceData.workspace, nf);
 
           document.getElementById("btnExec").disabled = false;
           document.getElementById("planStatus").textContent =
