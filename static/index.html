@@ -237,6 +237,52 @@
         font-weight: 500;
         font-family: var(--mono);
       }
+      .eval-card {
+        margin: 8px 14px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        font-size: 12px;
+        display: none;
+      }
+      .eval-card.visible { display: block; }
+      .eval-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .eval-label {
+        font-size: 10px;
+        font-family: var(--mono);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .eval-stars { color: var(--amber); font-size: 13px; letter-spacing: 1px; }
+      .eval-score {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 1px 7px;
+        border-radius: 10px;
+        margin-left: auto;
+      }
+      .eval-critique { color: var(--text); margin-bottom: 6px; line-height: 1.5; }
+      .eval-suggestions { list-style: none; padding: 0; margin: 0; }
+      .eval-suggestions li {
+        color: var(--muted);
+        font-size: 11px;
+        padding: 2px 0 2px 14px;
+        position: relative;
+        line-height: 1.4;
+      }
+      .eval-suggestions li::before {
+        content: "→";
+        position: absolute;
+        left: 0;
+        color: var(--accent);
+      }
       .agent-1 {
         background: rgba(127, 119, 221, 0.15);
         color: var(--purple);
@@ -482,6 +528,17 @@
             <div>Waiting for detection</div>
           </div>
         </div>
+        <!-- AI Evaluator card — shown after plan generation -->
+        <div class="eval-card" id="evalCard">
+          <div class="eval-header">
+            <span class="eval-label">AI Review</span>
+            <span class="eval-stars" id="evalStars"></span>
+            <span class="eval-score" id="evalScore"></span>
+          </div>
+          <div class="eval-critique" id="evalCritique"></div>
+          <ul class="eval-suggestions" id="evalSuggestions"></ul>
+        </div>
+
         <div class="bottom-bar">
           <button
             class="btn btn-primary btn-sm"
@@ -888,6 +945,9 @@
           document.getElementById("btnExec").disabled = false;
           document.getElementById("planStatus").textContent =
             `${planData.sequence.length} steps — ${planData.strategy || ""}`;
+
+          // Run evaluator in background — don't block plan display
+          runEvaluator();
         } catch (e) {
           document.getElementById("planStatus").style.color = "var(--red)";
           document.getElementById("planStatus").textContent = "error: " + e.message;
@@ -896,6 +956,40 @@
         stopLogPolling();
         loader.classList.remove("active");
         document.getElementById("btnPlan").disabled = false;
+      }
+
+      async function runEvaluator() {
+        try {
+          const resp = await fetch(`${API}/api/evaluate`, { method: "POST" });
+          if (!resp.ok) return;
+          const ev = await resp.json();
+          renderEvalCard(ev);
+        } catch (_) {}
+      }
+
+      function renderEvalCard(ev) {
+        const card = document.getElementById("evalCard");
+        if (!ev || ev.predicted_score == null) { card.classList.remove("visible"); return; }
+
+        const score = ev.predicted_score;
+        const stars = "★".repeat(score) + "☆".repeat(5 - score);
+        const color = score >= 4 ? "var(--green)" : score >= 3 ? "var(--amber)" : "var(--red)";
+
+        document.getElementById("evalStars").textContent = stars;
+        document.getElementById("evalScore").textContent = `${score}/5`;
+        document.getElementById("evalScore").style.cssText =
+          `background:${color}22;color:${color};font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;margin-left:auto`;
+        document.getElementById("evalCritique").textContent = ev.critique || "";
+
+        const ul = document.getElementById("evalSuggestions");
+        ul.innerHTML = "";
+        (ev.suggestions || []).forEach(s => {
+          const li = document.createElement("li");
+          li.textContent = s;
+          ul.appendChild(li);
+        });
+
+        card.classList.add("visible");
       }
 
       function renderSteps(plan) {
