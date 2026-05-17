@@ -431,16 +431,10 @@
         white-space: nowrap;
       }
 
-      /* ── Tooltip system ── */
-      [data-tip] { position: relative; }
-      [data-tip]::after {
-        content: attr(data-tip);
-        position: absolute;
-        top: calc(100% + 7px);
-        left: 50%;
-        transform: translateX(-50%);
-        width: max-content;
-        max-width: 230px;
+      /* ── Tooltip system — JS-driven fixed div avoids overflow:hidden clip ── */
+      #tooltip {
+        position: fixed;
+        z-index: 9999;
         background: #080910;
         border: 1px solid var(--border);
         color: var(--text);
@@ -449,20 +443,40 @@
         line-height: 1.5;
         padding: 6px 10px;
         border-radius: 6px;
-        z-index: 400;
         pointer-events: none;
         opacity: 0;
-        transition: opacity 0.12s 0.4s;
+        transition: opacity 0.15s;
         white-space: normal;
-        text-transform: none;
-        letter-spacing: 0;
+        max-width: 220px;
         font-family: var(--font);
-        box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.7);
       }
-      [data-tip]:hover::after { opacity: 1; }
-      [data-tip][data-tip-pos="up"]::after {
-        top: auto;
-        bottom: calc(100% + 7px);
+      #tooltip.visible { opacity: 1; }
+
+      /* ── Mobile layout ── */
+      @media (max-width: 768px) {
+        body { overflow: auto; height: auto; }
+        .header { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+        .header .status { display: none; }
+        .grid {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto;
+          height: auto;
+        }
+        .panel { min-height: 55vw; max-height: none; }
+        .panel-content { min-height: 40vw; }
+        .bottom-bar { flex-wrap: wrap; }
+        .btn { font-size: 14px; padding: 10px 16px; }
+        .btn-sm { font-size: 13px; padding: 9px 14px; }
+        #helpPanel { width: 100vw; top: 0; height: 100dvh; }
+        .tag-strip { max-height: none; }
+        #sim-container, #simCanvas { min-height: 220px; }
+      }
+      @media (max-width: 480px) {
+        .header h1 { font-size: 14px; }
+        .header .nav-link { font-size: 11px; padding: 3px 8px; }
+        .panel-label { font-size: 10px; }
+        .btn { width: 100%; justify-content: center; }
       }
 
       /* ── Help button ── */
@@ -575,6 +589,8 @@
     </style>
   </head>
   <body>
+    <div id="tooltip"></div>
+
     <div class="header">
       <h1><span>PHANTOM</span> LIMB</h1>
       <a class="nav-link" href="/dashboard" target="_blank">Dashboard ↗</a>
@@ -1975,6 +1991,51 @@
       // ============================================================
       // VIDEO TRACKING + WEBSOCKET
       // ============================================================
+
+      // ── JS tooltip (bypasses overflow:hidden on panels) ──
+      (function () {
+        const tt = document.getElementById("tooltip");
+        let showTimer, touchTimer;
+
+        function place(el) {
+          const tip = el.getAttribute("data-tip");
+          if (!tip) return;
+          tt.textContent = tip;
+          tt.classList.add("visible");
+          const r = el.getBoundingClientRect();
+          const tw = tt.offsetWidth;
+          const th = tt.offsetHeight;
+          const posUp = el.dataset.tipPos === "up";
+          let left = r.left + r.width / 2 - tw / 2;
+          let top = posUp ? r.top - th - 8 : r.bottom + 8;
+          left = Math.max(6, Math.min(window.innerWidth - tw - 6, left));
+          top = Math.max(6, Math.min(window.innerHeight - th - 6, top));
+          tt.style.left = left + "px";
+          tt.style.top = top + "px";
+        }
+
+        function hide() { tt.classList.remove("visible"); }
+
+        document.addEventListener("mouseenter", e => {
+          const el = e.target.closest("[data-tip]");
+          if (!el) return;
+          clearTimeout(showTimer);
+          showTimer = setTimeout(() => place(el), 350);
+        }, true);
+
+        document.addEventListener("mouseleave", e => {
+          if (e.target.closest("[data-tip]")) { clearTimeout(showTimer); hide(); }
+        }, true);
+
+        // Touch: tap to show for 2 s, then dismiss
+        document.addEventListener("touchstart", e => {
+          const el = e.target.closest("[data-tip]");
+          if (!el) return;
+          place(el);
+          clearTimeout(touchTimer);
+          touchTimer = setTimeout(hide, 2200);
+        }, { passive: true });
+      })();
 
       function toggleHelp() {
         const panel = document.getElementById("helpPanel");
