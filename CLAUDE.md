@@ -44,9 +44,13 @@ python cli/feed_photo.py photo.jpg
 3. Human zones get special treatment via skin-tone detection (`_refine_human_zone()`) and safety polygon generation (`_make_safety_polygon()`)
 
 **Agent 2 — Sorting Planner:**
-1. Gemini takes the workspace JSON and generates an optimal pick-and-place sequence grouped by category
-2. `_enforce_safety()` runs a hard-constraint pass: destinations must be outside safety zones, carry paths must not cross them
-3. `_heuristic_plan()` is the fallback if Gemini times out
+1. Rated past sessions are fetched from SQLite and injected as few-shot examples into the planning prompt (`_build_few_shot_context()`) — good plans show what to replicate, bad plans + comments show what to avoid
+2. Gemini takes the workspace JSON + few-shot context and generates an optimal pick-and-place sequence grouped by category (temperature=0.4 when examples present, 0.0 otherwise)
+3. `_enforce_safety()` runs a hard-constraint pass: destinations must be outside safety zones, carry paths must not cross them. Category-aware relocation sorts candidates by proximity to same-category placements already made
+4. `_heuristic_plan()` is the fallback if Gemini times out
+
+**Evaluator Agent:**
+After planning, `evaluate_plan()` makes a separate Gemini call that critiques the plan against past rated examples and returns a predicted score (1–5), a one-sentence critique, and 2–3 suggestions. Result is stored to the session DB and displayed as an "AI Review" card in the UI.
 
 Safety geometry uses ray-casting for point-in-polygon (`_point_in_polygon()`), 2D segment intersection for path checking (`_path_crosses_any_zone()`), and a `SAFETY_MARGIN = 0.05` buffer around human zones. Steps with no safe destination are marked `skip: true`.
 
@@ -61,12 +65,13 @@ FastAPI serves both the static frontend and the REST API. Key endpoints:
 | `GET /api/state` | Returns current server state (objects, zones, logs) |
 | `GET /api/sessions` | Lists all sessions (paginated, max 100) |
 | `POST /api/feedback/{id}` | Submits user rating (1–5) + comment |
+| `POST /api/evaluate` | Runs evaluator agent on current plan; stores + returns predicted score/critique |
 | `GET /api/stats` | Aggregate analytics |
 | `WS /ws/unity` | Legacy WebSocket — kept for backward compat, not actively used |
 
 ### Session Persistence (`core/storage.py`)
 
-SQLite (`sessions.db`) stores sessions with: workspace JSON, plan JSON, object/zone/step counts, and user ratings. `init_db()` is called at server startup.
+SQLite (`sessions.db`) stores sessions with: workspace JSON, plan JSON, object/zone/step counts, user ratings, and evaluator results (`eval_score`, `eval_critique`, `eval_suggestions`). `init_db()` is called at server startup and auto-migrates existing DBs via `PRAGMA table_info`.
 
 ### Frontend (`static/index.html`, `static/dashboard.html`)
 
