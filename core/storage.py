@@ -153,13 +153,20 @@ def get_session(session_id: str) -> dict | None:
 
 
 def get_rated_sessions(min_rating: int = 1, max_rating: int = 5, limit: int = 20) -> list[dict]:
-    """Return sessions that have ratings and a saved plan, newest first."""
+    """
+    Return sessions that have a saved plan and either a user rating or an evaluator
+    score, newest first. User rating takes priority; eval_score is used as a fallback
+    so every evaluated plan contributes to few-shot learning even without manual rating.
+    """
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, timestamp, rating, comment, obj_count, skipped, relocated, "
-            "workspace, plan, eval_score, eval_critique, eval_suggestions "
+            "workspace, plan, eval_score, eval_critique, eval_suggestions, "
+            "COALESCE(rating, ROUND(eval_score)) AS effective_rating "
             "FROM sessions "
-            "WHERE rating IS NOT NULL AND rating BETWEEN ? AND ? AND plan IS NOT NULL "
+            "WHERE plan IS NOT NULL "
+            "  AND (rating IS NOT NULL OR eval_score IS NOT NULL) "
+            "  AND COALESCE(rating, ROUND(eval_score)) BETWEEN ? AND ? "
             "ORDER BY timestamp DESC LIMIT ?",
             (min_rating, max_rating, limit),
         ).fetchall()
@@ -174,6 +181,38 @@ def get_rated_sessions(min_rating: int = 1, max_rating: int = 5, limit: int = 20
             d["eval_suggestions"] = json.loads(d["eval_suggestions"])
         result.append(d)
     return result
+
+
+def get_calibration_stats() -> dict:
+    """
+    Returns per-session predicted vs actual deltas and aggregate MAE/bias
+    for sessions where both eval_score and human rating exist.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, timestamp, rating, eval_score "
+            "FROM sessions "
+            "WHERE rating IS NOT NULL AND eval_score IS NOT NULL "
+            "ORDER BY timestamp DESC"
+        ).fetchall()
+    points = []
+    for r in rows:
+        delta = round(r["eval_score"] - r["rating"], 2)
+        points.append({
+            "id": r["id"],
+            "timestamp": r["timestamp"],
+            "actual": r["rating"],
+            "predicted": round(r["eval_score"], 2),
+            "delta": delta,
+        })
+    if points:
+        deltas = [abs(p["delta"]) for p in points]
+        biases = [p["delta"] for p in points]
+        mae = round(sum(deltas) / len(deltas), 3)
+        bias = round(sum(biases) / len(biases), 3)
+    else:
+        mae, bias = None, None
+    return {"points": points, "mae": mae, "bias": bias, "n": len(points)}
 
 
 def get_stats() -> dict:

@@ -125,6 +125,23 @@
   .img-tab { background: rgba(107,114,128,0.2); color: var(--muted); border: none; border-radius: 4px;
     padding: 4px 10px; font-size: 12px; cursor: pointer; }
   .img-tab.active { background: rgba(99,102,241,0.2); color: var(--accent); }
+
+  /* Calibration card */
+  .calib-panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 24px;
+  }
+  .calib-panel h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px; }
+  .calib-metrics { display: flex; gap: 24px; margin-bottom: 16px; }
+  .calib-metric .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 4px; }
+  .calib-metric .value { font-size: 22px; font-weight: 700; }
+  .calib-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .calib-table th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .calib-table td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .calib-table tr:last-child td { border-bottom: none; }
+  .delta-pos { color: var(--red); }
+  .delta-neg { color: var(--green); }
+  .delta-zero { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -146,6 +163,36 @@
   <div class="chart-panel">
     <h2>Rating Trend</h2>
     <canvas id="trendChart"></canvas>
+  </div>
+
+  <div class="calib-panel" id="calibPanel" style="display:none">
+    <h2>Evaluator Calibration</h2>
+    <div class="calib-metrics">
+      <div class="calib-metric">
+        <div class="label">MAE</div>
+        <div class="value" id="calibMAE">—</div>
+      </div>
+      <div class="calib-metric">
+        <div class="label">Bias</div>
+        <div class="value" id="calibBias">—</div>
+      </div>
+      <div class="calib-metric">
+        <div class="label">Samples</div>
+        <div class="value accent" id="calibN">—</div>
+      </div>
+    </div>
+    <table class="calib-table">
+      <thead>
+        <tr>
+          <th>Session</th>
+          <th>Date</th>
+          <th>Actual ★</th>
+          <th>Predicted ★</th>
+          <th>Delta</th>
+        </tr>
+      </thead>
+      <tbody id="calibBody"></tbody>
+    </table>
   </div>
 
   <div class="section-header">
@@ -192,13 +239,41 @@ let pendingComment = {}; // session_id → timeout handle
 // ── data loading ──────────────────────────────────────────────────────────
 
 async function loadAll() {
-  const [sessions, stats] = await Promise.all([
+  const [sessions, stats, calib] = await Promise.all([
     fetch(`${API}/api/sessions`).then(r => r.json()),
     fetch(`${API}/api/stats`).then(r => r.json()),
+    fetch(`${API}/api/calibration`).then(r => r.json()),
   ]);
   renderStats(stats);
   renderTrend(stats.trend || []);
   renderTable(sessions.sessions || []);
+  renderCalibration(calib);
+}
+
+function renderCalibration(c) {
+  const panel = document.getElementById("calibPanel");
+  if (!c || c.n === 0) { panel.style.display = "none"; return; }
+  panel.style.display = "";
+
+  const biasColor = c.bias > 0.3 ? "var(--red)" : c.bias < -0.3 ? "var(--green)" : "var(--yellow)";
+  const biasLabel = c.bias > 0.1 ? "over-predicts" : c.bias < -0.1 ? "under-predicts" : "well-calibrated";
+  document.getElementById("calibMAE").textContent = c.mae?.toFixed(2) ?? "—";
+  document.getElementById("calibBias").innerHTML = `<span style="color:${biasColor}">${c.bias > 0 ? "+" : ""}${c.bias?.toFixed(2)}</span> <span style="font-size:12px;font-weight:400;color:var(--muted)">(${biasLabel})</span>`;
+  document.getElementById("calibN").textContent = c.n;
+
+  document.getElementById("calibBody").innerHTML = c.points.map(p => {
+    const d = p.delta;
+    const cls = d > 0.2 ? "delta-pos" : d < -0.2 ? "delta-neg" : "delta-zero";
+    const sign = d > 0 ? "+" : "";
+    const ts = new Date(p.timestamp).toLocaleDateString();
+    return `<tr>
+      <td><code style="color:#9ca3af">${p.id}</code></td>
+      <td style="color:var(--muted)">${ts}</td>
+      <td>${"★".repeat(p.actual)}${"☆".repeat(5 - p.actual)}</td>
+      <td>${p.predicted.toFixed(1)}</td>
+      <td class="${cls}">${sign}${d.toFixed(2)}</td>
+    </tr>`;
+  }).join("");
 }
 
 // ── stats ─────────────────────────────────────────────────────────────────
