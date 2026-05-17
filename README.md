@@ -123,6 +123,44 @@ The 4-panel interface:
 4. Click **Generate plan** — Agent 2 creates the sorting sequence (2–3 s)
 5. Click **Execute in sim** — watch the robot arm sort the objects
 
+### Accessing from a phone (ngrok)
+
+Browsers only allow camera access over HTTPS or `localhost`. To use the live camera feed from a phone, expose the server via [ngrok](https://ngrok.com):
+
+**1. Install ngrok**
+
+```bash
+# macOS
+brew install ngrok
+
+# Linux
+snap install ngrok
+# or download from https://ngrok.com/download
+```
+
+**2. Authenticate (one-time, free account)**
+
+```bash
+ngrok config add-authtoken <your-token>
+# Get your token at https://dashboard.ngrok.com/authtokens
+```
+
+**3. Start the server and tunnel**
+
+```bash
+# Terminal 1
+python server.py
+
+# Terminal 2
+ngrok http 8000
+```
+
+Ngrok prints a forwarding URL like `https://xxxx.ngrok-free.app`. Open that URL on your phone — the camera will work because ngrok provides a valid HTTPS endpoint.
+
+> The frontend uses relative API paths, so all requests automatically go to the correct backend regardless of which URL you open.
+
+---
+
 ### CLI tools
 
 **Standalone detection (no server needed):**
@@ -217,7 +255,7 @@ Export the key in the same terminal session, or put it in a `.env` file at the p
 
 ### Camera not working in browser
 
-Browsers require HTTPS for camera access except on `localhost`. Use the **Upload photo** button as a fallback, or run the demo on the same machine.
+Browsers require HTTPS for camera access except on `localhost`. If you're accessing from a phone or another device, use ngrok to get a valid HTTPS URL — see [Accessing from a phone](#accessing-from-a-phone-ngrok) above. Otherwise use the **Upload photo** button as a fallback.
 
 ### Plan falls back to heuristic
 
