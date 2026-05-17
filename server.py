@@ -1,5 +1,5 @@
 """
-server.py — Phantom Limb Pipeline Server
+server.py — SafeArc Pipeline Server
 
 Serves the browser demo and runs hybrid detection + planning.
 
@@ -36,7 +36,7 @@ from core import storage as db
 
 db.init_db()
 
-app = FastAPI(title="Phantom Limb Pipeline")
+app = FastAPI(title="SafeArc Pipeline")
 
 app.add_middleware(
     CORSMiddleware,
@@ -210,7 +210,7 @@ async def serve_demo():
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return HTMLResponse("<h1>Phantom Limb</h1><p>Place index.html in static/ folder</p>")
+    return HTMLResponse("<h1>SafeArc</h1><p>Place index.html in static/ folder</p>")
 
 
 # ============================================================
