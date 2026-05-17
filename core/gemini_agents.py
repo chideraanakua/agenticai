@@ -945,6 +945,110 @@ def _heuristic_plan(objects, safety_zones):
     }
 
 
+EVALUATION_PROMPT = """You are an expert evaluator for a robotic pick-and-place sorting system.
+
+Given a sorting plan and a set of past human-rated plans for reference, evaluate the current plan.
+
+Rate the plan on a scale of 1-5:
+1 = Very poor (unsafe destinations, no clustering, pile-ups)
+2 = Poor (some clustering but major issues)
+3 = Mediocre (clustering attempted but inter-cluster separation weak)
+4 = Good (clusters mostly correct, good spacing, few relocations)
+5 = Excellent (perfect clustering, full workspace utilised, minimal relocations)
+
+Respond ONLY with valid JSON, no markdown, no explanation:
+{
+    "predicted_score": 3,
+    "critique": "one sentence summary of the main issue",
+    "suggestions": [
+        "specific actionable suggestion 1",
+        "specific actionable suggestion 2"
+    ]
+}"""
+
+
+def evaluate_plan(workspace_data, plan, past_sessions=None):
+    """
+    Evaluator agent: critiques the generated plan against past rated examples.
+    Returns a predicted quality score (1-5), a one-sentence critique, and
+    2-3 actionable suggestions — before the user rates it.
+    """
+    ws = workspace_data.get("workspace", workspace_data)
+    objects = ws.get("objects", [])
+    safety_zones = ws.get("safety_zones", [])
+    seq = plan.get("sequence", [])
+
+    if not seq:
+        return {"predicted_score": None, "critique": "No plan to evaluate.", "suggestions": []}
+
+    # Compact current plan summary
+    skipped = sum(1 for s in seq if s.get("skip"))
+    reloc   = sum(1 for s in seq if "safety enforced" in (s.get("reason") or ""))
+    safe_seq = [s for s in seq if not s.get("skip")]
+
+    obj_summary = ", ".join(
+        f"{o['label']}({o['category']})" for o in objects[:10]
+    )
+    zone_types = [z.get("type", "?") for z in safety_zones]
+
+    step_lines = []
+    for s in seq:
+        if s.get("skip"):
+            step_lines.append(f"  step {s['step']}: {s.get('object_label','?')} — SKIPPED")
+        else:
+            step_lines.append(
+                f"  step {s['step']}: {s.get('object_label','?')} → "
+                f"({s['to']['x']:.2f},{s['to']['y']:.2f})"
+                + (" [relocated]" if "safety enforced" in (s.get("reason") or "") else "")
+            )
+
+    if safe_seq:
+        xs = [s["to"]["x"] for s in safe_seq]
+        ys = [s["to"]["y"] for s in safe_seq]
+        spread = f"x=[{min(xs):.2f},{max(xs):.2f}] y=[{min(ys):.2f},{max(ys):.2f}]"
+    else:
+        spread = "n/a"
+
+    current_plan_text = (
+        f"CURRENT PLAN TO EVALUATE:\n"
+        f"  Objects : {obj_summary}\n"
+        f"  Zones   : {', '.join(zone_types)}\n"
+        f"  Stats   : {len(seq)} steps, {skipped} skipped, {reloc} relocated\n"
+        f"  Spread  : {spread}\n"
+        f"Steps:\n" + "\n".join(step_lines)
+    )
+
+    # Past examples for reference
+    few_shot = _build_few_shot_context(past_sessions or [])
+
+    prompt = f"{EVALUATION_PROMPT}{few_shot}\n\n{current_plan_text}"
+
+    try:
+        client = _get_client()
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                max_output_tokens=512,
+            ),
+        )
+        result = _parse_json_response(response.text)
+        result.setdefault("predicted_score", None)
+        result.setdefault("critique", "")
+        result.setdefault("suggestions", [])
+        result["based_on"] = len(past_sessions or [])
+        return result
+    except Exception as e:
+        print(f"  [EVAL] Evaluation failed: {e}")
+        return {
+            "predicted_score": None,
+            "critique": f"Evaluation unavailable: {e}",
+            "suggestions": [],
+            "based_on": 0,
+        }
+
+
 def category_to_color(category):
     return {
         "kitchen": "blue", "reading": "green", "writing": "pink",

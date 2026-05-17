@@ -23,6 +23,7 @@ import uvicorn
 from core.gemini_agents import (
     detect_objects_hybrid,
     plan_sorting,
+    evaluate_plan,
     category_to_color,
 )
 from core import storage as db
@@ -257,6 +258,18 @@ async def submit_feedback(session_id: str, request: Request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     return {"status": "ok", "session_id": session_id, "rating": rating}
+
+
+@app.post("/api/evaluate")
+async def evaluate_endpoint():
+    if not current_workspace or not current_plan:
+        return JSONResponse(
+            {"error": "No workspace or plan loaded. Run detection and planning first."},
+            status_code=400,
+        )
+    past_sessions = db.get_rated_sessions(limit=10)
+    result = evaluate_plan(current_workspace, current_plan, past_sessions)
+    return result
 
 
 @app.get("/api/stats")
