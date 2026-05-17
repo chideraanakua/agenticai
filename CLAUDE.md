@@ -13,8 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 pip install -r requirements.txt
 
 # Set required env vars (or put in .env)
-export GEMINI_API_KEY="your-key"        # Required — get free key at aistudio.google.com/apikey
-export GEMINI_MODEL="gemini-2.5-flash"  # Optional — this is the default
+export GEMINI_API_KEY="your-key"             # Required — get free key at aistudio.google.com/apikey
+export GEMINI_MODEL="gemini-2.5-flash-lite"  # Optional — this is the default
 
 # Start server
 python server.py
@@ -28,15 +28,15 @@ No build step — the frontend is a single static HTML file served by FastAPI.
 
 ```bash
 # Standalone detection (no server needed)
-python detect.py photo.png --preview
+python cli/detect.py photo.png --preview
 
 # Feed a photo into a running server
-python feed_photo.py photo.jpg
+python cli/feed_photo.py photo.jpg
 ```
 
 ## Architecture
 
-### Two-Agent AI Pipeline (`gemini_agents.py`)
+### Two-Agent AI Pipeline (`core/gemini_agents.py`)
 
 **Agent 1 — Hybrid Detection:**
 1. Gemini Vision API identifies objects and produces rough bounding boxes (±10–20% accuracy)
@@ -64,7 +64,7 @@ FastAPI serves both the static frontend and the REST API. Key endpoints:
 | `GET /api/stats` | Aggregate analytics |
 | `WS /ws/unity` | Legacy WebSocket — kept for backward compat, not actively used |
 
-### Session Persistence (`storage.py`)
+### Session Persistence (`core/storage.py`)
 
 SQLite (`sessions.db`) stores sessions with: workspace JSON, plan JSON, object/zone/step counts, and user ratings. `init_db()` is called at server startup.
 
@@ -88,15 +88,16 @@ SQLite (`sessions.db`) stores sessions with: workspace JSON, plan JSON, object/z
 {"step": 1, "action": "pick_and_place", "object_id": "...", "from": [x,y], "to": [x,y], "skip": false}
 ```
 
-## Tunable Parameters (`gemini_agents.py`)
+## Tunable Parameters (`core/gemini_agents.py`)
 
 - `padding_ratio = 0.15` — how much to expand crop regions for OpenCV refinement
 - `SAFETY_MARGIN = 0.05` — extra buffer fraction around human zones
 - Robot base exclusion zone is hard-coded at x: 0.05–0.31, y: 0.0–0.26 (normalized coords)
-- Gemini free tier throttles at 15 req/min — detection + planning together count as 2 requests
+- Gemini free tier limits vary by model — detection + planning together count as 2 requests
 
 ## Known Constraints
 
 - Camera requires HTTPS except on localhost (browser security policy)
 - CORS is wide open (`allow_origins=["*"]`) — fine for local demo only
-- `sessions.db` and `.env` are gitignored; Unity scripts in `unity_scripts/` are deprecated dead code
+- `sessions.db` and `.env` are gitignored
+- SDK: uses `google-genai` (not the deprecated `google-generativeai`); client is `genai.Client`
