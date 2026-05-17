@@ -170,8 +170,10 @@ async def plan_endpoint():
 
     try:
         log("Generating sorting plan...")
+        past_sessions = db.get_rated_sessions(limit=10)
         plan = plan_sorting(
             current_workspace,
+            past_sessions=past_sessions,
             status_callback=lambda msg: log(msg, "plan"),
         )
 

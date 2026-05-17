@@ -452,10 +452,80 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 }"""
 
 
-def plan_sorting(workspace_data, status_callback=None):
+def _build_few_shot_context(past_sessions):
+    """
+    Formats rated past sessions as compact few-shot examples injected into
+    the planning prompt. Good plans (4-5★) show what to replicate; bad/mediocre
+    plans (1-3★) show what to avoid, with the user's comment explaining why.
+    """
+    if not past_sessions:
+        return ""
+
+    good = [s for s in past_sessions if s.get("rating", 0) >= 4]
+    bad  = [s for s in past_sessions if s.get("rating", 0) <= 2]
+    mid  = [s for s in past_sessions if s.get("rating", 0) == 3]
+    ordered = good[:2] + bad[:2] + mid[:1]
+    if not ordered:
+        return ""
+
+    lines = ["\n\n--- PAST RATED EXAMPLES ---"]
+    lines.append("Learn from these human-rated plans. Replicate good patterns; avoid bad ones.\n")
+
+    for s in ordered:
+        rating  = s.get("rating", "?")
+        comment = s.get("comment", "").strip()
+        ws      = s.get("workspace", {})
+        ws      = ws.get("workspace", ws)
+        plan    = s.get("plan", {})
+
+        quality = "GOOD" if rating >= 4 else ("BAD" if rating <= 2 else "MEDIOCRE")
+        stars   = "★" * int(rating) + "☆" * (5 - int(rating))
+
+        obj_summary = ", ".join(
+            f"{o['label']}({o['category']})"
+            for o in ws.get("objects", [])[:10]
+        )
+        zone_types = [z.get("type", "?") for z in ws.get("safety_zones", [])]
+
+        seq      = plan.get("sequence", [])
+        skipped  = sum(1 for st in seq if st.get("skip"))
+        reloc    = sum(1 for st in seq if "safety enforced" in (st.get("reason") or ""))
+        safe_seq = [st for st in seq if not st.get("skip")]
+        spread   = ""
+        if safe_seq:
+            xs = [st["to"]["x"] for st in safe_seq]
+            ys = [st["to"]["y"] for st in safe_seq]
+            spread = f"x=[{min(xs):.2f},{max(xs):.2f}] y=[{min(ys):.2f},{max(ys):.2f}]"
+
+        lines.append(f"[{quality} PLAN — {stars}]")
+        lines.append(f"  Objects : {obj_summary}")
+        lines.append(f"  Zones   : {', '.join(zone_types)}")
+        lines.append(f"  Stats   : {len(seq)} steps, {skipped} skipped, {reloc} relocated")
+        if spread:
+            lines.append(f"  Spread  : {spread}")
+        if comment:
+            lines.append(f"  Feedback: \"{comment}\"")
+        lines.append("")
+
+    lines.append("KEY LESSONS:")
+    lines.append("- Place same-category objects near each other (within 0.20 normalized units)")
+    lines.append("- Do NOT split same-category objects across a safety zone boundary")
+    lines.append("- Spread destinations across the full safe area — avoid lining up at the same y value")
+    lines.append("- Minimise relocations: choose destinations outside safety zones from the start")
+    lines.append("--- END EXAMPLES ---\n")
+    return "\n".join(lines)
+
+
+def plan_sorting(workspace_data, past_sessions=None, status_callback=None):
     """
     Gemini Agent 2: plans the sorting sequence.
     Falls back to heuristic if Gemini fails.
+
+    Args:
+        workspace_data: output of detect_objects_hybrid
+        past_sessions:  list of rated sessions from storage.get_rated_sessions()
+                        injected as few-shot examples into the planning prompt
+        status_callback: optional function(message) for progress
     """
     def status(msg):
         if status_callback:
@@ -473,6 +543,10 @@ def plan_sorting(workspace_data, status_callback=None):
             "clusters": [],
             "sequence": [],
         }
+
+    few_shot = _build_few_shot_context(past_sessions or [])
+    if few_shot:
+        status(f"Injecting {len(past_sessions)} rated example(s) into planning prompt")
 
     status("Sending workspace to Gemini for sorting plan...")
 
@@ -492,7 +566,7 @@ def plan_sorting(workspace_data, status_callback=None):
         ],
     }, indent=2)
 
-    prompt = f"{PLANNING_PROMPT}\n\nWorkspace state:\n{workspace_summary}"
+    prompt = f"{PLANNING_PROMPT}{few_shot}\n\nWorkspace state:\n{workspace_summary}"
 
     try:
         client = _get_client()
