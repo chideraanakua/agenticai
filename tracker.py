@@ -171,8 +171,8 @@ class HumanZoneTracker:
             else:
                 new_x, new_y = px, py
             polygon.append({
-                "x": round(min(1.0, max(0.0, new_x)), 4),
-                "y": round(min(1.0, max(0.0, new_y)), 4),
+                "x": round(min(1.0, max(0.0, float(new_x))), 4),
+                "y": round(min(1.0, max(0.0, float(new_y))), 4),
             })
 
         self.static_polygon = polygon
