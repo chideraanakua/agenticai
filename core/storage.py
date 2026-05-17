@@ -156,7 +156,8 @@ def get_rated_sessions(min_rating: int = 1, max_rating: int = 5, limit: int = 20
     """Return sessions that have ratings and a saved plan, newest first."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, timestamp, rating, comment, obj_count, skipped, relocated, workspace, plan "
+            "SELECT id, timestamp, rating, comment, obj_count, skipped, relocated, "
+            "workspace, plan, eval_score, eval_critique, eval_suggestions "
             "FROM sessions "
             "WHERE rating IS NOT NULL AND rating BETWEEN ? AND ? AND plan IS NOT NULL "
             "ORDER BY timestamp DESC LIMIT ?",
@@ -169,6 +170,8 @@ def get_rated_sessions(min_rating: int = 1, max_rating: int = 5, limit: int = 20
             d["workspace"] = json.loads(d["workspace"])
         if d.get("plan"):
             d["plan"] = json.loads(d["plan"])
+        if d.get("eval_suggestions"):
+            d["eval_suggestions"] = json.loads(d["eval_suggestions"])
         result.append(d)
     return result
 
