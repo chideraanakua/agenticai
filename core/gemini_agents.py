@@ -472,14 +472,18 @@ def _build_few_shot_context(past_sessions):
     lines.append("Learn from these human-rated plans. Replicate good patterns; avoid bad ones.\n")
 
     for s in ordered:
-        rating  = s.get("rating", "?")
-        comment = s.get("comment", "").strip()
+        # Use user rating if present, fall back to evaluator's predicted score
+        rating  = s.get("rating") or s.get("effective_rating") or s.get("eval_score") or "?"
+        auto    = s.get("rating") is None
+        comment = (s.get("comment") or "").strip()
         ws      = s.get("workspace", {})
         ws      = ws.get("workspace", ws)
         plan    = s.get("plan", {})
 
-        quality = "GOOD" if rating >= 4 else ("BAD" if rating <= 2 else "MEDIOCRE")
-        stars   = "★" * int(rating) + "☆" * (5 - int(rating))
+        rating_int = int(rating) if str(rating).replace(".", "").isdigit() else 3
+        quality = "GOOD" if rating_int >= 4 else ("BAD" if rating_int <= 2 else "MEDIOCRE")
+        stars   = "★" * rating_int + "☆" * (5 - rating_int)
+        source  = "auto-evaluated" if auto else "human-rated"
 
         obj_summary = ", ".join(
             f"{o['label']}({o['category']})"
@@ -497,7 +501,7 @@ def _build_few_shot_context(past_sessions):
             ys = [st["to"]["y"] for st in safe_seq]
             spread = f"x=[{min(xs):.2f},{max(xs):.2f}] y=[{min(ys):.2f},{max(ys):.2f}]"
 
-        lines.append(f"[{quality} PLAN — {stars}]")
+        lines.append(f"[{quality} PLAN — {stars} ({source})]")
         lines.append(f"  Objects : {obj_summary}")
         lines.append(f"  Zones   : {', '.join(zone_types)}")
         lines.append(f"  Stats   : {len(seq)} steps, {skipped} skipped, {reloc} relocated")
