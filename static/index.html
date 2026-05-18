@@ -1174,8 +1174,12 @@
           vid.style.display = "block";
           document.getElementById("snapshot-img").style.display = "none";
           overlay.classList.add("hidden");
-          vid.addEventListener("loadeddata", function captureFirstFrame() {
-            vid.removeEventListener("loadeddata", captureFirstFrame);
+          vid.addEventListener("loadedmetadata", function seekIntoVideo() {
+            vid.removeEventListener("loadedmetadata", seekIntoVideo);
+            vid.currentTime = Math.min(0.5, (vid.duration || 1) / 4);
+          });
+          vid.addEventListener("seeked", function captureFirstFrame() {
+            vid.removeEventListener("seeked", captureFirstFrame);
             const canvas = document.createElement("canvas");
             canvas.width = vid.videoWidth;
             canvas.height = vid.videoHeight;
@@ -1206,6 +1210,19 @@
       // DETECTION (Agent 1)
       // ============================================================
 
+      function _isBlackFrame(canvas) {
+        const ctx = canvas.getContext("2d");
+        const cx = Math.floor(canvas.width * 0.25), cy = Math.floor(canvas.height * 0.25);
+        const cw = Math.floor(canvas.width * 0.5), ch = Math.floor(canvas.height * 0.5);
+        if (cw < 1 || ch < 1) return true;
+        const data = ctx.getImageData(cx, cy, cw, ch).data;
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 4) sum += data[i] + data[i + 1] + data[i + 2];
+        return (sum / (data.length / 4)) < 8;
+      }
+
+      let _blackFrameRetries = 0;
+
       async function scanWorkspace() {
         const video = document.getElementById("camera-feed");
         if (video.videoWidth === 0) return;
@@ -1213,6 +1230,18 @@
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext("2d").drawImage(video, 0, 0);
+
+        if (_isBlackFrame(canvas) && _blackFrameRetries < 5) {
+          _blackFrameRetries++;
+          if ('requestVideoFrameCallback' in video) {
+            video.requestVideoFrameCallback(() => scanWorkspace());
+          } else {
+            setTimeout(() => scanWorkspace(), 300);
+          }
+          return;
+        }
+        _blackFrameRetries = 0;
+
         const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
 
         const img = document.getElementById("snapshot-img");
@@ -2235,17 +2264,45 @@
           colorMap[obj.id] = CAT_COLORS[obj.category] || "#888";
         });
 
+        // Build step number map from current plan
+        const stepMap = {};
+        if (planData && planData.sequence) {
+          planData.sequence.forEach(step => {
+            stepMap[step.object_id] = { num: String(step.step), skip: !!step.skip };
+          });
+        }
+
         for (const [objId, pos] of Object.entries(positions)) {
           const [nx1, ny1, nx2, ny2] = pos.bbox;
           const p1 = _normToOverlay(nx1, ny1);
           const p2 = _normToOverlay(nx2, ny2);
-          const color = colorMap[objId] || "#888";
+          const stepInfo = stepMap[objId];
+          const color = stepInfo?.skip ? "#888" : (colorMap[objId] || "#888");
           const label = labelMap[objId] || objId;
 
+          // Bounding box
           ctx.strokeStyle = color;
           ctx.lineWidth = 2;
+          if (stepInfo?.skip) ctx.setLineDash([5, 3]);
           ctx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+          ctx.setLineDash([]);
 
+          // Step number badge
+          const r = 12;
+          const bx = p1.x + r, by = p1.y + r;
+          ctx.beginPath();
+          ctx.arc(bx, by, r, 0, Math.PI * 2);
+          ctx.fillStyle = stepInfo?.skip ? "rgba(136,136,136,0.7)" : color;
+          ctx.fill();
+          ctx.fillStyle = "white";
+          ctx.font = "bold 12px system-ui";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(stepInfo ? stepInfo.num : "?", bx, by);
+          ctx.textAlign = "left";
+          ctx.textBaseline = "alphabetic";
+
+          // Label bar
           ctx.font = "bold 11px system-ui";
           const tw = ctx.measureText(label).width;
           ctx.fillStyle = color + "cc";
