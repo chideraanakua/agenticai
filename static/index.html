@@ -928,14 +928,14 @@
             id="btnUpload"
             onclick="uploadFile()"
             data-tip-pos="up"
-            data-tip="Upload a photo or video file"
+            data-tip="Upload a photo of your workspace"
           >
             Upload
           </button>
           <input
             type="file"
             id="fileInput"
-            accept="image/*,video/*"
+            accept="image/*"
             style="display: none"
             onchange="handleUpload(event)"
           />
@@ -1159,39 +1159,6 @@
       function handleUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
-
-        if (file.type.startsWith("video/")) {
-          // For video files: load into video element, capture first frame
-          const url = URL.createObjectURL(file);
-          const vid = document.getElementById("camera-feed");
-          const overlay = document.getElementById("cameraOverlay");
-          isVideoMode = true;
-          document.getElementById("btnPlan").disabled = true;
-          document.getElementById("btnScan").disabled = true;
-          document.getElementById("btnExec").disabled = true;
-          vid.src = url;
-          vid.muted = true;
-          vid.style.display = "block";
-          document.getElementById("snapshot-img").style.display = "none";
-          overlay.classList.add("hidden");
-          vid.addEventListener("loadedmetadata", function seekIntoVideo() {
-            vid.removeEventListener("loadedmetadata", seekIntoVideo);
-            vid.currentTime = Math.min(0.5, (vid.duration || 1) / 4);
-          });
-          vid.addEventListener("seeked", function captureFirstFrame() {
-            vid.removeEventListener("seeked", captureFirstFrame);
-            const canvas = document.createElement("canvas");
-            canvas.width = vid.videoWidth;
-            canvas.height = vid.videoHeight;
-            canvas.getContext("2d").drawImage(vid, 0, 0);
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-            sourceImage = dataUrl;
-            startFrameLoop();
-            runDetection(dataUrl);
-          });
-          vid.load();
-          return;
-        }
 
         const reader = new FileReader();
         reader.onload = function (e) {
