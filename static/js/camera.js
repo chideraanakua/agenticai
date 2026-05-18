@@ -71,18 +71,10 @@ async function startCameraMode(mode) {
     if (mode === "video") {
       isVideoMode = true;
       document.getElementById("btnPlan").disabled = true;
-      document.getElementById("btnScan").disabled = true;
+      document.getElementById("btnScan").disabled = false;
       document.getElementById("btnScan").textContent = "Scan workspace";
       document.getElementById("btnExec").disabled = true;
       startFrameLoop();
-      const triggerScan = () => {
-        if ('requestVideoFrameCallback' in video) {
-          video.requestVideoFrameCallback(() => scanWorkspace());
-        } else {
-          setTimeout(() => scanWorkspace(), 300);
-        }
-      };
-      video.addEventListener('playing', () => setTimeout(triggerScan, 1500), { once: true });
     } else {
       isVideoMode = false;
       document.getElementById("btnPlan").disabled = true;
