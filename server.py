@@ -31,7 +31,7 @@ from core.gemini_agents import (
     category_to_color,
     _path_crosses_any_zone,
 )
-from tracker import ObjectTracker, HumanZoneTracker, check_drift
+from tracker import ObjectTracker, HumanZoneTracker, check_drift, bbox_px_from_normalized
 from core import storage as db
 
 db.init_db()
@@ -91,13 +91,12 @@ def _init_trackers(workspace: dict, frame):
 
     tracker_pool = {}
     for obj in ws.get("objects", []):
-        bbox_px = obj.get("bbox_px")
-        if not bbox_px:
+        bb = obj.get("bounding_box")
+        if not bb:
             continue
-        x1, y1, x2, y2 = bbox_px
-        bw, bh = x2 - x1, y2 - y1
+        x, y, bw, bh = bbox_px_from_normalized(bb, w, h)
         if bw > 0 and bh > 0:
-            tracker_pool[obj["id"]] = ObjectTracker(obj["id"], (x1, y1, bw, bh), frame)
+            tracker_pool[obj["id"]] = ObjectTracker(obj["id"], (x, y, bw, bh), frame)
 
     static_polygon = None
     for zone in ws.get("safety_zones", []):
