@@ -1,5 +1,5 @@
 """
-server.py — Phantom Limb Pipeline Server
+server.py — SafeArc Pipeline Server
 
 Serves the browser demo and runs hybrid detection + planning.
 
@@ -13,7 +13,11 @@ import os
 import base64
 import io
 import pathlib
-from fastapi import FastAPI, Request
+import asyncio
+import time
+import numpy as np
+import cv2
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -25,12 +29,14 @@ from core.gemini_agents import (
     plan_sorting,
     evaluate_plan,
     category_to_color,
+    _path_crosses_any_zone,
 )
+from tracker import ObjectTracker, HumanZoneTracker, check_drift
 from core import storage as db
 
 db.init_db()
 
-app = FastAPI(title="Phantom Limb Pipeline")
+app = FastAPI(title="SafeArc Pipeline")
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,12 +55,104 @@ current_plan = None
 current_session_id = None
 status_log = []
 
+# ---- video tracking state ----
+tracker_pool: dict = {}           # object_id → ObjectTracker
+human_zone_tracker: HumanZoneTracker | None = None
+current_step_index: int = 0       # which step the frontend animation is on
+last_replan_time: float = 0.0
+REPLAN_COOLDOWN: float = 8.0      # seconds between auto-replans
+_replan_lock = asyncio.Lock()
+_tracker_frame_size: tuple | None = None  # (w, h) CSRT was initialised at
+_ws_clients: list[WebSocket] = []
+
 
 def log(msg, level="info"):
     status_log.append({"msg": msg, "level": level})
     if len(status_log) > 200:
         status_log.pop(0)
     print(f"  [{level.upper()}] {msg}")
+
+
+def _decode_frame_b64(frame_b64: str):
+    raw = frame_b64.split(",", 1)[-1] if "," in frame_b64 else frame_b64
+    img_array = np.frombuffer(base64.b64decode(raw), dtype=np.uint8)
+    return cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+
+def _init_trackers(workspace: dict, frame):
+    """Initialise CSRT trackers and MediaPipe pose tracker from a fresh workspace."""
+    global tracker_pool, human_zone_tracker, current_step_index, last_replan_time, _tracker_frame_size
+
+    if human_zone_tracker:
+        human_zone_tracker.close()
+
+    ws = workspace.get("workspace", {})
+    h, w = frame.shape[:2]
+
+    tracker_pool = {}
+    for obj in ws.get("objects", []):
+        bbox_px = obj.get("bbox_px")
+        if not bbox_px:
+            continue
+        x1, y1, x2, y2 = bbox_px
+        bw, bh = x2 - x1, y2 - y1
+        if bw > 0 and bh > 0:
+            tracker_pool[obj["id"]] = ObjectTracker(obj["id"], (x1, y1, bw, bh), frame)
+
+    static_polygon = None
+    for zone in ws.get("safety_zones", []):
+        if zone.get("type") == "human_presence":
+            static_polygon = zone.get("polygon")
+            break
+
+    human_zone_tracker = HumanZoneTracker(static_polygon=static_polygon)
+    current_step_index = 0
+    last_replan_time = time.time()  # grace period — no replan for REPLAN_COOLDOWN seconds after init
+    _tracker_frame_size = (frame.shape[1], frame.shape[0])  # (w, h) for incoming frame resize
+    log(f"Trackers initialised: {len(tracker_pool)} objects at {_tracker_frame_size[0]}x{_tracker_frame_size[1]}")
+
+
+async def _push_to_clients(message: dict):
+    dead = []
+    for ws in _ws_clients:
+        try:
+            await ws.send_json(message)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        if ws in _ws_clients:
+            _ws_clients.remove(ws)
+
+
+async def _auto_replan(frame_b64: str):
+    """Re-detect and re-plan using the current frame. Rate-limited by REPLAN_COOLDOWN."""
+    global current_workspace, current_plan, current_step_index, last_replan_time
+
+    async with _replan_lock:
+        last_replan_time = time.time()
+        log("Auto-replan: re-detecting workspace...", "replan")
+        try:
+            loop = asyncio.get_event_loop()
+            workspace = await loop.run_in_executor(None, detect_objects_hybrid, frame_b64)
+            current_workspace = workspace
+
+            frame = _decode_frame_b64(frame_b64)
+            if frame is not None:
+                _init_trackers(workspace, frame)
+
+            plan = await loop.run_in_executor(None, plan_sorting, workspace)
+            current_plan = plan
+            current_step_index = 0
+
+            log(f"Auto-replan complete: {len(plan.get('sequence', []))} steps", "replan")
+            await _push_to_clients({
+                "type": "replan",
+                "plan": plan,
+                "workspace": workspace,
+                "resume_from_step": 0,
+            })
+        except Exception as e:
+            log(f"Auto-replan failed: {e}", "error")
 
 
 # ============================================================
@@ -112,7 +210,7 @@ async def serve_demo():
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return HTMLResponse("<h1>Phantom Limb</h1><p>Place index.html in static/ folder</p>")
+    return HTMLResponse("<h1>SafeArc</h1><p>Place index.html in static/ folder</p>")
 
 
 # ============================================================
@@ -139,6 +237,10 @@ async def detect_endpoint(request: Request):
         current_workspace = workspace
         current_session_id = db.new_session()
         db.save_workspace(current_session_id, workspace)
+
+        frame = _decode_frame_b64(image_data)
+        if frame is not None:
+            _init_trackers(workspace, frame)
 
         try:
             orig_url, ann_url = _save_session_images(current_session_id, image_data, workspace)
@@ -290,12 +392,126 @@ async def get_stats():
 
 
 # ============================================================
+# VIDEO TRACKING ENDPOINTS
+# ============================================================
+
+@app.websocket("/ws/unity")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    _ws_clients.append(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # keep-alive; we only push, never pull
+    except WebSocketDisconnect:
+        if websocket in _ws_clients:
+            _ws_clients.remove(websocket)
+
+
+@app.post("/api/video/frame")
+async def video_frame_endpoint(request: Request):
+    global last_replan_time
+
+    body = await request.json()
+    frame_b64 = body.get("frame")
+    if not frame_b64:
+        return JSONResponse({"error": "No frame provided"}, status_code=400)
+
+    frame = _decode_frame_b64(frame_b64)
+    if frame is None:
+        return JSONResponse({"error": "Could not decode frame"}, status_code=400)
+
+    # Resize to match the resolution CSRT was initialised at (frontend sends 320x240)
+    if _tracker_frame_size and (frame.shape[1], frame.shape[0]) != _tracker_frame_size:
+        frame = cv2.resize(frame, _tracker_frame_size)
+
+    h, w = frame.shape[:2]
+
+    # Update object trackers
+    positions = {}
+    lost_objects = []
+    for obj_id, tracker in tracker_pool.items():
+        success, _ = tracker.update(frame)
+        if success:
+            cx, cy = tracker.centroid_normalized(w, h)
+            positions[obj_id] = {
+                "centroid": {"x": cx, "y": cy},
+                "bbox": tracker.bbox_normalized(w, h),
+            }
+        else:
+            lost_objects.append(obj_id)
+
+    # Update human safety zone
+    human_zone = human_zone_tracker.update(frame) if human_zone_tracker else None
+
+    # Build current zones list with updated human polygon for path checks
+    stale_steps, blocked_steps = [], []
+    if current_plan and current_workspace:
+        ws = current_workspace.get("workspace", {})
+        zones = list(ws.get("safety_zones", []))
+        if human_zone:
+            zones = [
+                {**z, "polygon": human_zone} if z.get("type") == "human_presence" else z
+                for z in zones
+            ]
+
+        obj_anchors = {o["id"]: o["centroid"] for o in ws.get("objects", [])}
+        sequence = current_plan.get("sequence", [])
+
+        for step in sequence[current_step_index:]:
+            step_idx = step.get("step", 1) - 1
+            obj_id = step.get("object_id")
+
+            if obj_id and obj_id in positions and obj_id in obj_anchors:
+                anchor = obj_anchors[obj_id]
+                cur = positions[obj_id]["centroid"]
+                if check_drift((cur["x"], cur["y"]), (anchor["x"], anchor["y"])):
+                    stale_steps.append(step_idx)
+
+            frm = step.get("from", {})
+            to = step.get("to", {})
+            if frm and to and not step.get("skip"):
+                if _path_crosses_any_zone(
+                    frm.get("x", 0), frm.get("y", 0),
+                    to.get("x", 0), to.get("y", 0),
+                    zones,
+                ):
+                    blocked_steps.append(step_idx)
+
+    cooldown_clear = (time.time() - last_replan_time) >= REPLAN_COOLDOWN
+    needs_replan = bool(stale_steps or blocked_steps or lost_objects)
+    replanning = False
+
+    if needs_replan and cooldown_clear and not _replan_lock.locked():
+        replanning = True
+        asyncio.create_task(_auto_replan(frame_b64))
+
+    return {
+        "positions": positions,
+        "human_zone": human_zone,
+        "stale_steps": list(set(stale_steps)),
+        "blocked_steps": list(set(blocked_steps)),
+        "lost_objects": lost_objects,
+        "replanning": replanning,
+    }
+
+
+@app.post("/api/step/complete")
+async def step_complete(request: Request):
+    global current_step_index
+    body = await request.json()
+    idx = body.get("step_index")
+    if isinstance(idx, int) and idx == current_step_index:
+        current_step_index += 1
+    return {"step_index": current_step_index}
+
+
+# ============================================================
 # MAIN
 # ============================================================
 
 if __name__ == "__main__":
     print("\n" + "=" * 54)
-    print("  PHANTOM LIMB — Pipeline Server")
+    print("  Safe Arc — Pipeline Server")
     print("  " + "-" * 50)
     print("  Browser demo:  http://localhost:8000")
     print("  Dashboard:     http://localhost:8000/dashboard")
@@ -305,4 +521,5 @@ if __name__ == "__main__":
         "SET" if os.environ.get("GEMINI_API_KEY") else "NOT SET"
     ))
     print("=" * 54 + "\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

@@ -1,4 +1,4 @@
-# Phantom Limb
+# Safearc
 
 **Adaptive Spatial-Sorting & Safety Engine**
 Track 3: Robotics & Simulation
@@ -9,7 +9,7 @@ An AI-orchestrated pipeline that turns workspace chaos into collision-free robot
 
 ## What it does
 
-Point a camera at a messy table. Phantom Limb identifies every object, plans the optimal sorting sequence, enforces human safety zones, and executes the plan in a real-time 3D simulation — all in under 10 seconds.
+Point a camera at a messy table. Safearc identifies every object, plans the optimal sorting sequence, enforces human safety zones, and executes the plan in a real-time 3D simulation — all in under 10 seconds.
 
 ```
 Camera → Agent 1 (Gemini + OpenCV) → Agent 2 (Gemini) → Robot Arm Simulation
@@ -108,12 +108,12 @@ python server.py
 
 The 4-panel interface:
 
-| Panel           | Location     | Purpose                                                         |
-| --------------- | ------------ | --------------------------------------------------------------- |
-| Workspace input | Top left     | Camera feed or photo upload. Click "Scan workspace" to capture. |
-| Detected objects| Top right    | Annotated image with bounding boxes, labels, and safety zones.  |
-| Sorting plan    | Bottom left  | Step-by-step plan from Agent 2 with reasoning.                  |
-| Digital twin    | Bottom right | Three.js 3D simulation with robot arm executing the plan.       |
+| Panel            | Location     | Purpose                                                         |
+| ---------------- | ------------ | --------------------------------------------------------------- |
+| Workspace input  | Top left     | Camera feed or photo upload. Click "Scan workspace" to capture. |
+| Detected objects | Top right    | Annotated image with bounding boxes, labels, and safety zones.  |
+| Sorting plan     | Bottom left  | Step-by-step plan from Agent 2 with reasoning.                  |
+| Digital twin     | Bottom right | Three.js 3D simulation with robot arm executing the plan.       |
 
 **Demo flow:**
 
@@ -123,6 +123,44 @@ The 4-panel interface:
 4. Click **Generate plan** — Agent 2 creates the sorting sequence (2–3 s); an **AI Review** card appears with a predicted quality score, critique, and suggestions
 5. Click **Execute in sim** — watch the robot arm sort the objects
 6. Rate the session (1–5★) on the dashboard — ratings feed back into future plans as few-shot examples
+
+### Accessing from a phone (ngrok)
+
+Browsers only allow camera access over HTTPS or `localhost`. To use the live camera feed from a phone, expose the server via [ngrok](https://ngrok.com):
+
+**1. Install ngrok**
+
+```bash
+# macOS
+brew install ngrok
+
+# Linux
+snap install ngrok
+# or download from https://ngrok.com/download
+```
+
+**2. Authenticate (one-time, free account)**
+
+```bash
+ngrok config add-authtoken <your-token>
+# Get your token at https://dashboard.ngrok.com/authtokens
+```
+
+**3. Start the server and tunnel**
+
+```bash
+# Terminal 1
+python server.py
+
+# Terminal 2
+ngrok http 8000
+```
+
+Ngrok prints a forwarding URL like `https://xxxx.ngrok-free.app`. Open that URL on your phone — the camera will work because ngrok provides a valid HTTPS endpoint.
+
+> The frontend uses relative API paths, so all requests automatically go to the correct backend regardless of which URL you open.
+
+---
 
 ### CLI tools
 
@@ -160,6 +198,9 @@ PYTHONPATH=. python tests/test_enforce_safety.py
 | `/api/evaluate`       | POST   | Run evaluator agent on current plan                  |
 | `/api/calibration`    | GET    | Evaluator calibration stats (MAE, bias, per-session) |
 | `/api/stats`          | GET    | Aggregate analytics                                  |
+| `/api/video/frame`    | POST   | Per-frame tracking update (video mode)               |
+| `/api/step/complete`  | POST   | Advance step index after animation completes         |
+| `WS /ws/unity`        | WS     | Push channel for auto-replan events                  |
 
 ---
 
@@ -198,17 +239,17 @@ Each object includes a `coord_source` field — `"opencv"` if refined successful
 
 ### Environment variables
 
-| Variable        | Required | Default             | Description                        |
-| --------------- | -------- | ------------------- | ---------------------------------- |
-| `GEMINI_API_KEY`| Yes      | —                   | Google AI Studio API key           |
-| `GEMINI_MODEL`  | No       | `gemini-2.5-flash-lite`  | Gemini model to use             |
+| Variable         | Required | Default                 | Description              |
+| ---------------- | -------- | ----------------------- | ------------------------ |
+| `GEMINI_API_KEY` | Yes      | —                       | Google AI Studio API key |
+| `GEMINI_MODEL`   | No       | `gemini-2.5-flash-lite` | Gemini model to use      |
 
 ### Tunable parameters (`core/gemini_agents.py`)
 
-| Parameter       | Default | Description                                                        |
-| --------------- | ------- | ------------------------------------------------------------------ |
-| `padding_ratio` | `0.15`  | Crop expansion for OpenCV refinement. Increase if boxes are missed.|
-| `SAFETY_MARGIN` | `0.05`  | Extra buffer around human zones (normalized coords).               |
+| Parameter       | Default | Description                                                         |
+| --------------- | ------- | ------------------------------------------------------------------- |
+| `padding_ratio` | `0.15`  | Crop expansion for OpenCV refinement. Increase if boxes are missed. |
+| `SAFETY_MARGIN` | `0.05`  | Extra buffer around human zones (normalized coords).                |
 
 ---
 
@@ -220,7 +261,7 @@ Export the key in the same terminal session, or put it in a `.env` file at the p
 
 ### Camera not working in browser
 
-Browsers require HTTPS for camera access except on `localhost`. Use the **Upload photo** button as a fallback, or run the demo on the same machine.
+Browsers require HTTPS for camera access except on `localhost`. If you're accessing from a phone or another device, use ngrok to get a valid HTTPS URL — see [Accessing from a phone](#accessing-from-a-phone-ngrok) above. Otherwise use the **Upload photo** button as a fallback.
 
 ### Plan falls back to heuristic
 
@@ -238,5 +279,5 @@ pip install opencv-python-headless
 
 ## Team
 
-**Phantom Limb** — the robot arm that thinks before it moves.
+**Safearc** — the robot arm that thinks before it moves.
 Built for TechEx Hackathon — Track 3: Robotics & Simulation.

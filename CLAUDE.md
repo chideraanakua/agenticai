@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**SafeArc / Phantom Limb** — An adaptive spatial-sorting and safety engine for a TechEx Hackathon (Track 3: Robotics & Simulation). It uses a two-agent Gemini pipeline for object detection and pick-and-place planning, with a browser-based 3D simulation frontend.
+**SafeArc** — An adaptive spatial-sorting and safety engine for a TechEx Hackathon (Track 3: Robotics & Simulation). It uses a two-agent Gemini pipeline for object detection and pick-and-place planning, with a browser-based 3D simulation frontend.
 
 ## Running Locally
 
