@@ -22,7 +22,7 @@ python server.py
 # Dashboard: http://localhost:8000/dashboard
 ```
 
-No build step — the frontend is a single static HTML file served by FastAPI.
+No build step — the frontend is static files served by FastAPI.
 
 ## CLI Tools
 
@@ -69,15 +69,26 @@ FastAPI serves both the static frontend and the REST API. Key endpoints:
 | `POST /api/evaluate` | Runs evaluator agent on current plan; stores + returns predicted score/critique |
 | `GET /api/calibration` | Returns per-session predicted vs actual deltas + MAE + bias |
 | `GET /api/stats` | Aggregate analytics |
-| `WS /ws/unity` | Legacy WebSocket — kept for backward compat, not actively used |
+| `POST /api/video/frame` | Per-frame tracking update (video mode) |
+| `POST /api/step/complete` | Advance step index after animation completes |
+| `WS /ws/unity` | Push channel — server broadcasts new plan + workspace after auto-replan |
 
 ### Session Persistence (`core/storage.py`)
 
 SQLite (`sessions.db`) stores sessions with: workspace JSON, plan JSON, object/zone/step counts, user ratings, and evaluator results (`eval_score`, `eval_critique`, `eval_suggestions`). `init_db()` is called at server startup and auto-migrates existing DBs via `PRAGMA table_info`.
 
-### Frontend (`static/index.html`, `static/dashboard.html`)
+### Frontend (`static/`)
 
-`index.html` is a 4-panel browser demo: workspace input → annotated canvas → step-by-step plan → Three.js 3D robot arm simulation. All backend communication is `fetch`-based.
+`index.html` is a lean HTML skeleton (370 lines) referencing external CSS and JS modules:
+
+- `css/layout.css` — CSS variables, reset, header, grid, panels
+- `css/components.css` — buttons, steps, sim canvas, eval card, tag strip
+- `css/ui.css` — tooltips, mobile layout, help panel, beginner guide modal
+- `js/camera.js` — global state, log polling, camera/upload (load first)
+- `js/detection.js` — scan workspace, run detection, annotation canvas
+- `js/planning.js` — generate plan, evaluator, render steps
+- `js/simulation.js` — Three.js setup, arm animation, init
+- `js/overlay.js` — live bounding box overlay, video tracking, websocket, session restore
 
 `dashboard.html` shows session history, per-session detail modals, a rating interface, a Chart.js rating trend graph, and an evaluator calibration card (MAE, bias, per-session delta table with tooltips).
 
@@ -85,14 +96,17 @@ SQLite (`sessions.db`) stores sessions with: workspace JSON, plan JSON, object/z
 
 ```json
 // Workspace object
-{"id": "...", "label": "cup", "category": "container", "centroid": [x, y],
- "bounding_box": [x1, y1, x2, y2], "confidence": 0.92, "coord_source": "hybrid"}
+{"id": "...", "label": "cup", "category": "kitchen", "centroid": {"x": 0.4, "y": 0.6},
+ "bounding_box": {"top_left": {"x": 0.3, "y": 0.5}, "bottom_right": {"x": 0.5, "y": 0.7}},
+ "confidence": 0.85, "coord_source": "opencv"}
+// coord_source is "opencv" (refined) or "gemini_estimate" (fallback)
 
 // Safety zone
-{"id": "...", "type": "human_presence", "polygon": [[x,y],...], "risk_level": "high"}
+{"id": "...", "type": "human_presence", "polygon": [{"x": 0.1, "y": 0.2}, ...], "risk_level": "high"}
 
 // Plan step
-{"step": 1, "action": "pick_and_place", "object_id": "...", "from": [x,y], "to": [x,y], "skip": false}
+{"step": 1, "action": "pick_and_place", "object_id": "...", "object_label": "cup",
+ "from": {"x": 0.4, "y": 0.6}, "to": {"x": 0.7, "y": 0.8}, "skip": false}
 ```
 
 ## Tunable Parameters (`core/gemini_agents.py`)
