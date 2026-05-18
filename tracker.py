@@ -66,11 +66,17 @@ class ObjectTracker:
         self.object_id = object_id
         self.lost = False
         self._bbox = tuple(int(v) for v in bbox_xywh)
-        self._tracker = cv2.TrackerCSRT_create()
-        self._tracker.init(frame, self._bbox)
+        try:
+            self._tracker = cv2.legacy.TrackerCSRT_create()
+            self._tracker.init(frame, self._bbox)
+        except AttributeError:
+            self._tracker = None
+            self.lost = True
 
     def update(self, frame) -> tuple[bool, tuple]:
         """Returns (success, (x, y, w, h)). Sets self.lost=True on failure."""
+        if self._tracker is None:
+            return False, self._bbox
         success, bbox = self._tracker.update(frame)
         if success:
             self._bbox = tuple(int(v) for v in bbox)
