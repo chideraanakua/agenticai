@@ -82,7 +82,7 @@ async function startCameraMode(mode) {
           setTimeout(() => scanWorkspace(), 300);
         }
       };
-      video.addEventListener('playing', triggerScan, { once: true });
+      video.addEventListener('playing', () => setTimeout(triggerScan, 1500), { once: true });
     } else {
       isVideoMode = false;
       document.getElementById("btnPlan").disabled = true;
