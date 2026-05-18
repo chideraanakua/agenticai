@@ -34,8 +34,10 @@ Takes the workspace JSON with all object positions and safety zones, then output
 ```
 safearc/
 ├── server.py            # FastAPI backend — serves everything
+├── tracker.py           # Frame-level tracking (CSRT + MediaPipe)
 ├── conftest.py          # pytest path setup
 ├── requirements.txt
+├── render.yaml          # Render.com deploy config
 ├── core/
 │   ├── gemini_agents.py # Agent 1 (hybrid detection) + Agent 2 (planner)
 │   └── storage.py       # SQLite session persistence + analytics
@@ -44,10 +46,22 @@ safearc/
 │   └── feed_photo.py    # Feed a photo into a running server
 ├── tests/
 │   └── test_enforce_safety.py
-├── samples/             # Test images
+├── samples/
+│   ├── Photos/          # Test images (perspective_1–5, human_in_middle, more_objects)
+│   └── Videos/          # Sample video clips
 └── static/
-    ├── index.html       # 4-panel browser demo (Three.js sim)
-    └── dashboard.html   # Session history + rating dashboard
+    ├── index.html       # HTML skeleton — 4-panel browser demo
+    ├── dashboard.html   # Session history + rating dashboard
+    ├── css/
+    │   ├── layout.css   # Variables, reset, header, grid, panels
+    │   ├── components.css # Buttons, steps, sim canvas, eval card
+    │   └── ui.css       # Tooltips, mobile, help panel, guide modal
+    └── js/
+        ├── camera.js    # Global state + camera/upload (load first)
+        ├── detection.js # Detection + annotation canvas
+        ├── planning.js  # Plan generation + evaluator
+        ├── simulation.js # Three.js arm simulation
+        └── overlay.js   # Live overlay + video tracking + session restore
 ```
 
 ---
@@ -117,9 +131,11 @@ The 4-panel interface:
 
 **Demo flow:**
 
-1. Click **Start camera** (or **Upload photo**)
+1. Click **Start camera** → choose **📷 Click photo** (manual) or **🎥 Capture video** (auto-loop)
+   — or click **Upload** to use a saved photo
 2. Point at a table with several objects
-3. Click **Scan workspace** — Agent 1 runs detection (3–5 s)
+3. **Photo mode:** click **Take photo** → **Scan workspace** — Agent 1 runs detection (3–5 s)
+   **Video mode:** scan → plan → execute run automatically in a continuous loop
 4. Click **Generate plan** — Agent 2 creates the sorting sequence (2–3 s); an **AI Review** card appears with a predicted quality score, critique, and suggestions
 5. Click **Execute in sim** — watch the robot arm sort the objects
 6. Rate the session (1–5★) on the dashboard — ratings feed back into future plans as few-shot examples
@@ -261,7 +277,7 @@ Export the key in the same terminal session, or put it in a `.env` file at the p
 
 ### Camera not working in browser
 
-Browsers require HTTPS for camera access except on `localhost`. If you're accessing from a phone or another device, use ngrok to get a valid HTTPS URL — see [Accessing from a phone](#accessing-from-a-phone-ngrok) above. Otherwise use the **Upload photo** button as a fallback.
+Browsers require HTTPS for camera access except on `localhost`. If you're accessing from a phone or another device, use ngrok to get a valid HTTPS URL — see [Accessing from a phone](#accessing-from-a-phone-ngrok) above. Otherwise use the **Upload** button as a fallback.
 
 ### Plan falls back to heuristic
 
