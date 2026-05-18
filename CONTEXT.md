@@ -38,10 +38,22 @@ safearc/
 │   └── feed_photo.py           # CLI tool to push a photo into running server
 ├── tests/
 │   └── test_enforce_safety.py  # Safety enforcement unit tests (5 tests)
-├── samples/                    # Test images
+├── samples/
+│   ├── Photos/                 # Test images (perspective_1–5, human_in_middle, more_objects)
+│   └── Videos/                 # Sample video clips
 └── static/
-    ├── index.html              # 4-panel browser demo (Three.js sim + live video tracking)
-    └── dashboard.html          # Session review + rating dashboard
+    ├── index.html              # HTML skeleton — 4-panel browser demo
+    ├── dashboard.html          # Session review + rating dashboard
+    ├── css/
+    │   ├── layout.css          # CSS variables, reset, header, grid, panels
+    │   ├── components.css      # Buttons, steps, sim canvas, eval card, tag strip
+    │   └── ui.css              # Tooltips, mobile layout, help panel, guide modal
+    └── js/
+        ├── camera.js           # Global state, log polling, camera/upload (load first)
+        ├── detection.js        # Scan workspace, run detection, annotation canvas
+        ├── planning.js         # Generate plan, evaluator agent, render steps
+        ├── simulation.js       # Three.js setup, arm animation, init
+        └── overlay.js          # Live overlay, video tracking, websocket, session restore
 ```
 
 ## Data Flow
@@ -72,7 +84,7 @@ Camera / Upload
   → evaluator critique also injected into few-shot context → loop closes
 ```
 
-### Video tracking mode (new — `video-support` branch)
+### Video tracking mode
 
 ```
 Camera live feed (5fps frame loop)
@@ -107,6 +119,11 @@ Camera live feed (5fps frame loop)
 - **GEMINI_MODEL env var** — defaults to `gemini-2.5-flash-lite`; swap to `gemini-2.0-flash-lite` for higher free-tier rate limits during testing.
 
 ## Changelog
+
+### 2026-05-17 — Video-support merged to master; frontend refactor
+
+- **Merge:** `prp-dev-video-support` branch merged to master — all video mode features, tracker.py, server video endpoints, and render.yaml are now on master.
+- **Refactor: frontend split into modules (`static/`)** — `index.html` reduced from 2535 lines to 370-line HTML skeleton. CSS extracted into `css/layout.css` (111 lines), `css/components.css` (298 lines), `css/ui.css` (269 lines). JS extracted into `js/camera.js` (117 lines), `js/detection.js` (268 lines), `js/planning.js` (148 lines), `js/simulation.js` (437 lines), `js/overlay.js` (327 lines). Load order matters: `camera.js` defines all global state and must be first.
 
 ### 2026-05-17 — Evaluator calibration, similarity-ranked few-shot, loop closure
 
@@ -152,7 +169,7 @@ Camera live feed (5fps frame loop)
 
 - **Tests (`tests/test_enforce_safety.py`)** — 5 unit tests covering: object inside zone → skip, object outside zone safe path → unchanged, outside zone path crosses zone → relocate, destination inside zone → relocate, multiple objects inside zone → all skipped. All 5 passing.
 
-### 2026-05-15 — Video tracking pipeline (`video-support` branch)
+### 2026-05-15 — Video tracking pipeline
 
 - **Feat:** `tracker.py` — `ObjectTracker` (OpenCV CSRT per object) and `HumanZoneTracker` (MediaPipe Pose Tasks API) provide frame-level position updates without Gemini calls. MediaPipe model auto-downloaded on first use.
 - **Feat:** `POST /api/video/frame` — runs CSRT + MediaPipe each frame, checks drift and path-crossing, triggers `_auto_replan()` when issues found and 8s cooldown elapsed.
@@ -202,7 +219,7 @@ Camera live feed (5fps frame loop)
 ### 2026-05-13 — Initial state
 
 - Two-agent pipeline fully implemented: Gemini + OpenCV hybrid detection, Gemini spatial planner with heuristic fallback, safety enforcement
-- **Unity dropped** — Three.js is now the sole simulation layer; `unity_scripts/` and `/ws/unity` WebSocket are dead code (kept for backward compat)
+- **Unity dropped** — Three.js is now the sole simulation layer; `unity_scripts/` removed. `WS /ws/unity` was initially dead code but was repurposed in the video-support branch as the auto-replan push channel (server → frontend)
 - Dashboard with session review, per-session detail modal, and rating submission implemented
 - CONTEXT.md and CLAUDE.md created
 
