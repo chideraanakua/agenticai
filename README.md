@@ -1,15 +1,17 @@
-# Safearc
+# SafeArc
 
 **Adaptive Spatial-Sorting & Safety Engine**
 Track 3: Robotics & Simulation
 
 An AI-orchestrated pipeline that turns workspace chaos into collision-free robotic sorting — validated in a digital twin before a single motor moves.
 
+Demo Link: https://turtle-superb-lovely.ngrok-free.app/
+
 ---
 
 ## What it does
 
-Point a camera at a messy table. Safearc identifies every object, plans the optimal sorting sequence, enforces human safety zones, and executes the plan in a real-time 3D simulation — all in under 10 seconds.
+Point a camera at a messy table. SafeArc identifies every object, plans the optimal sorting sequence, enforces human safety zones, and executes the plan in a real-time 3D simulation — all in under 10 seconds.
 
 ```
 Camera → Agent 1 (Gemini + OpenCV) → Agent 2 (Gemini) → Robot Arm Simulation
@@ -21,11 +23,21 @@ Camera → Agent 1 (Gemini + OpenCV) → Agent 2 (Gemini) → Robot Arm Simulati
 
 ## Architecture
 
+![Architecture](/samples/representation_image.jpeg)
+
 **Agent 1 — Perception (Gemini + OpenCV hybrid)**
+
 Gemini's vision model sees the full workspace image and identifies objects by name, category, and approximate location. OpenCV then refines each bounding box to pixel-perfect precision using edge detection and contour snapping. Gemini tells you _what_, OpenCV tells you _where_.
 
 **Agent 2 — Planning (Gemini spatial reasoning)**
+
+Before generating a plan, Agent 2 fetches the highest and lowest-rated past sessions ranked by scene similarity and injects them as few-shot examples into the prompt
+
 Takes the workspace JSON with all object positions and safety zones, then outputs an optimal pick-and-place sorting sequence. Groups objects by category, respects no-go zones, minimizes total arm movement. Falls back to a heuristic planner if the API is unavailable.
+
+**Session Memory (Self-Improving)**
+
+Every session is stored in SQLite with operator ratings and AI evaluator scores. Before each new plan, the most scene-relevant rated sessions are retrieved and injected into the planning prompt as few-shot examples — two feedback signals per example (user comment + AI critique). The system improves with each deployment without retraining.
 
 ---
 
@@ -79,7 +91,7 @@ safearc/
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/srikeerthis/safearc
 cd safearc
 ```
 
@@ -202,21 +214,21 @@ PYTHONPATH=. python tests/test_enforce_safety.py
 
 ## API reference
 
-| Endpoint              | Method | Purpose                                              |
-| --------------------- | ------ | ---------------------------------------------------- |
-| `/api/detect`         | POST   | Run hybrid detection on a base64 image               |
-| `/api/plan`           | POST   | Generate sorting plan from current workspace         |
-| `/api/workspace`      | POST   | Direct workspace injection (for testing)             |
-| `/api/state`          | GET    | Current server state (objects, zones, logs)          |
-| `/api/sessions`       | GET    | Session history (paginated, max 100)                 |
-| `/api/sessions/{id}`  | GET    | Single session detail                                |
-| `/api/feedback/{id}`  | POST   | Submit user rating (1–5) + comment                  |
-| `/api/evaluate`       | POST   | Run evaluator agent on current plan                  |
-| `/api/calibration`    | GET    | Evaluator calibration stats (MAE, bias, per-session) |
-| `/api/stats`          | GET    | Aggregate analytics                                  |
-| `/api/video/frame`    | POST   | Per-frame tracking update (video mode)               |
-| `/api/step/complete`  | POST   | Advance step index after animation completes         |
-| `WS /ws/unity`        | WS     | Push channel for auto-replan events                  |
+| Endpoint             | Method | Purpose                                                   |
+| -------------------- | ------ | --------------------------------------------------------- |
+| `/api/detect`        | POST   | Run hybrid detection on a base64 image                    |
+| `/api/plan`          | POST   | Generate sorting plan from current workspace              |
+| `/api/workspace`     | POST   | Direct workspace injection (for testing)                  |
+| `/api/state`         | GET    | Current server state (objects, zones, logs)               |
+| `/api/sessions`      | GET    | Session history (paginated, max 100)                      |
+| `/api/sessions/{id}` | GET    | Single session detail                                     |
+| `/api/feedback/{id}` | POST   | Submit user rating (1–5) + comment                        |
+| `/api/evaluate`      | POST   | Run evaluator agent on current plan                       |
+| `/api/calibration`   | GET    | Evaluator calibration stats (MAE, bias, per-session)      |
+| `/api/stats`         | GET    | Aggregate analytics                                       |
+| `/api/video/frame`   | POST   | Per-frame tracking update (video mode)                    |
+| `/api/step/complete` | POST   | Advance step index after animation completes              |
+| `WS /ws/unity`       | WS     | Push channel for live plan updates and auto-replan events |
 
 ---
 
@@ -295,5 +307,5 @@ pip install opencv-python-headless
 
 ## Team
 
-**Safearc** — the robot arm that thinks before it moves.
+**SafeArc** — the robot arm that thinks before it moves.
 Built for TechEx Hackathon — Track 3: Robotics & Simulation.
