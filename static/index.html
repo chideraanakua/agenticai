@@ -1036,6 +1036,7 @@
     <script>
       const API = "";
       let stream = null;
+      let isVideoMode = false;
       let workspaceData = null;
       let planData = null;
       let sourceImage = null;
@@ -1073,7 +1074,9 @@
           stream = null;
           video.srcObject = null;
           btn.textContent = "Start camera";
+          isVideoMode = false;
           document.getElementById("btnScan").disabled = true;
+          document.getElementById("btnPlan").style.display = "";
           overlay.classList.remove("hidden");
           stopFrameLoop();
           return;
@@ -1089,9 +1092,12 @@
           });
           video.srcObject = stream;
           btn.textContent = "Stop camera";
+          isVideoMode = true;
           document.getElementById("btnScan").disabled = false;
+          document.getElementById("btnPlan").style.display = "none";
           overlay.classList.add("hidden");
           startFrameLoop();
+          setTimeout(() => scanWorkspace(), 800);
         } catch (e) {
           const overlay = document.getElementById("cameraOverlay");
           overlay.classList.remove("hidden");
@@ -1180,7 +1186,7 @@
           const planEmpty = document.getElementById("planEmpty");
           if (planEmpty) planEmpty.innerHTML =
             `<div style="font-size:24px;opacity:0.3">⟡</div>
-             <div>${objs.length} object${objs.length !== 1 ? "s" : ""} detected — click Generate plan</div>`;
+             <div>${objs.length} object${objs.length !== 1 ? "s" : ""} detected — ${isVideoMode ? "generating plan…" : "click Generate plan"}</div>`;
 
           drawAnnotations(sourceImage, workspaceData);
           updateSimWorkspace(workspaceData);
@@ -1208,6 +1214,7 @@
         stopLogPolling();
         loader.classList.remove("active");
         document.getElementById("btnScan").disabled = !stream;
+        if (isVideoMode && workspaceData) generatePlan();
       }
 
       // ============================================================
@@ -1418,6 +1425,7 @@
 
           // Run evaluator in background — don't block plan display
           runEvaluator();
+          if (isVideoMode) executePlan();
         } catch (e) {
           document.getElementById("planStatus").style.color = "var(--red)";
           document.getElementById("planStatus").textContent = "error: " + e.message;
