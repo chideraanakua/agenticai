@@ -277,6 +277,8 @@ function addStepLabels() {
 
 function executePlan() {
   if (!planData || simSorting) return;
+  const ph = document.getElementById("simPlaceholder");
+  if (ph) ph.style.display = "none";
   simPlan = planData.sequence;
   simStepIdx = 0;
   simSorting = true;
