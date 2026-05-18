@@ -1174,6 +1174,13 @@
           document.getElementById("objCount").textContent =
             `${objs.length} objects, ${zones.length} zones`;
           document.getElementById("btnPlan").disabled = false;
+          document.getElementById("planStatus").textContent =
+            `${objs.length} object${objs.length !== 1 ? "s" : ""} detected — ready to plan`;
+          document.getElementById("planStatus").style.color = "var(--green)";
+          const planEmpty = document.getElementById("planEmpty");
+          if (planEmpty) planEmpty.innerHTML =
+            `<div style="font-size:24px;opacity:0.3">⟡</div>
+             <div>${objs.length} object${objs.length !== 1 ? "s" : ""} detected — click Generate plan</div>`;
 
           drawAnnotations(sourceImage, workspaceData);
           updateSimWorkspace(workspaceData);
