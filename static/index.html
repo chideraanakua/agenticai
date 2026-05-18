@@ -1108,7 +1108,7 @@
         isVideoMode = false;
         document.getElementById("btnScan").disabled = true;
         document.getElementById("btnScan").textContent = "Scan workspace";
-        document.getElementById("btnPlan").style.display = "";
+        document.getElementById("btnPlan").disabled = true;
         overlay.classList.remove("hidden");
         stopFrameLoop();
       }
@@ -1127,7 +1127,7 @@
           overlay.classList.add("hidden");
           if (mode === "video") {
             isVideoMode = true;
-            document.getElementById("btnPlan").style.display = "none";
+            document.getElementById("btnPlan").disabled = true;
             document.getElementById("btnScan").disabled = true;
             document.getElementById("btnScan").textContent = "Scan workspace";
             document.getElementById("btnExec").disabled = true;
@@ -1142,7 +1142,7 @@
             video.addEventListener('playing', triggerScan, { once: true });
           } else {
             isVideoMode = false;
-            document.getElementById("btnPlan").style.display = "";
+            document.getElementById("btnPlan").disabled = true;
             document.getElementById("btnScan").disabled = false;
             document.getElementById("btnScan").textContent = "Take photo";
           }
@@ -1166,7 +1166,7 @@
           const vid = document.getElementById("camera-feed");
           const overlay = document.getElementById("cameraOverlay");
           isVideoMode = true;
-          document.getElementById("btnPlan").style.display = "none";
+          document.getElementById("btnPlan").disabled = true;
           document.getElementById("btnScan").disabled = true;
           document.getElementById("btnExec").disabled = true;
           vid.src = url;
@@ -1535,11 +1535,11 @@
         } catch (e) {
           document.getElementById("planStatus").style.color = "var(--red)";
           document.getElementById("planStatus").textContent = "error: " + e.message;
+          document.getElementById("btnPlan").disabled = false;
         }
 
         stopLogPolling();
         loader.classList.remove("active");
-        if (!isVideoMode) document.getElementById("btnPlan").disabled = false;
       }
 
       async function runEvaluator() {
