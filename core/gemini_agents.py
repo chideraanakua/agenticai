@@ -1,5 +1,5 @@
 """
-gemini_agents.py — Phantom Limb AI Agents
+gemini_agents.py — Safearc AI Agents
 
 Agent 1 (Hybrid Detection):
     Gemini sees the full image → returns object names + rough bounding boxes
@@ -24,6 +24,7 @@ import json
 import os
 import re
 import base64
+import time
 import traceback
 from datetime import datetime, timezone
 from PIL import Image
@@ -33,6 +34,33 @@ load_dotenv()
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 _client = None
+
+_RETRY_DELAYS = [5, 15, 30]  # seconds between retries on rate-limit
+
+
+def _gemini_with_retry(fn, status_cb=None):
+    """
+    Calls fn() which must return a Gemini response.
+    Retries up to 3 times with increasing delays on 429 / quota errors.
+    Raises on non-rate-limit errors or after all retries exhausted.
+    """
+    last_err = None
+    for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+        if delay:
+            msg = f"Rate limit — waiting {delay}s (retry {attempt}/{len(_RETRY_DELAYS)})"
+            if status_cb:
+                status_cb(msg)
+            print(f"  [WARN] {msg}")
+            time.sleep(delay)
+        try:
+            return fn()
+        except Exception as e:
+            err = str(e).lower()
+            if any(k in err for k in ("429", "quota", "rate", "resource exhausted")):
+                last_err = e
+                continue
+            raise  # non-rate-limit error — fail immediately
+    raise last_err
 
 
 def _get_client():
@@ -278,6 +306,7 @@ def detect_objects_hybrid(image_source, status_callback=None):
             print(f"[DETECT] {msg}")
 
     status("Loading image...")
+    img_pil = None
     if isinstance(image_source, str) and os.path.isfile(image_source):
         img_cv = cv2.imread(image_source)
         img_pil = Image.open(image_source)
@@ -289,22 +318,27 @@ def detect_objects_hybrid(image_source, status_callback=None):
             raw = base64.b64decode(raw)
         img_array = np.frombuffer(raw, dtype=np.uint8)
         img_cv = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        img_pil = Image.open(BytesIO(raw))
 
     if img_cv is None:
         raise ValueError("Could not decode image")
+
+    if img_pil is None:
+        img_pil = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
 
     h, w = img_cv.shape[:2]
 
     status("Sending to Gemini for object identification...")
     client = _get_client()
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[DETECTION_PROMPT, img_pil],
-        config=types.GenerateContentConfig(
-            temperature=0.0,
-            max_output_tokens=8192,
+    response = _gemini_with_retry(
+        lambda: client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[DETECTION_PROMPT, img_pil],
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                max_output_tokens=8192,
+            ),
         ),
+        status_cb=status,
     )
 
     gemini_data = _parse_json_response(response.text)
@@ -355,6 +389,12 @@ def detect_objects_hybrid(image_source, status_callback=None):
                     "y": round(refined["y_max"], 4),
                 },
             },
+            "bbox_px": [
+                int(refined["x_min"] * w),
+                int(refined["y_min"] * h),
+                int(refined["x_max"] * w),
+                int(refined["y_max"] * h),
+            ],
             "area_ratio": round(area, 4),
             "confidence": round(min(0.97, 0.70 + coverage * 0.30), 2) if source == "opencv" else 0.62,
             "coord_source": source,
@@ -607,27 +647,39 @@ def plan_sorting(workspace_data, past_sessions=None, status_callback=None):
                 "id": o["id"],
                 "label": o["label"],
                 "category": o["category"],
-                "centroid": o["centroid"],
+                "centroid": {
+                    "x": round(o["centroid"]["x"], 2),
+                    "y": round(o["centroid"]["y"], 2),
+                },
             }
             for o in objects
         ],
         "safety_zones": [
-            {"id": z["id"], "polygon": z["polygon"]}
+            {
+                "id": z["id"],
+                "polygon": [
+                    {"x": round(p["x"], 2), "y": round(p["y"], 2)}
+                    for p in z["polygon"]
+                ],
+            }
             for z in safety_zones
         ],
-    }, indent=2)
+    }, separators=(",", ":"))  # no whitespace — cuts token count ~35%
 
     prompt = f"{PLANNING_PROMPT}{few_shot}\n\nWorkspace state:\n{workspace_summary}"
 
     try:
         client = _get_client()
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                max_output_tokens=8192,
+        response = _gemini_with_retry(
+            lambda: client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    max_output_tokens=8192,
+                ),
             ),
+            status_cb=status,
         )
         plan = _parse_json_response(response.text)
 

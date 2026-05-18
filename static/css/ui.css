@@ -1,0 +1,269 @@
+/* ── Tooltip system ── */
+#tooltip {
+  position: fixed;
+  z-index: 9999;
+  background: #080910;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 6px 10px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  white-space: normal;
+  max-width: 220px;
+  font-family: var(--font);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.7);
+}
+#tooltip.visible { opacity: 1; }
+
+/* ── Mobile layout ── */
+@media (max-width: 768px) {
+  body { overflow: auto; height: auto; }
+  .header { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+  .header .status { display: none; }
+  .grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    height: auto;
+  }
+  .panel { min-height: 55vw; max-height: none; }
+  .panel-content { min-height: 40vw; }
+  .bottom-bar { flex-wrap: wrap; }
+  .btn { font-size: 14px; padding: 10px 16px; }
+  .btn-sm { font-size: 13px; padding: 9px 14px; }
+  #helpPanel { width: 100vw; top: 0; height: 100dvh; }
+  .tag-strip { max-height: none; }
+  #sim-container, #simCanvas { min-height: 220px; }
+}
+@media (max-width: 480px) {
+  .header h1 { font-size: 14px; }
+  .header .nav-link { font-size: 11px; padding: 3px 8px; }
+  .panel-label { font-size: 10px; }
+  .btn { width: 100%; justify-content: center; }
+}
+
+/* ── Help button ── */
+#helpBtn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  font-family: var(--font);
+  flex-shrink: 0;
+}
+#helpBtn:hover { border-color: var(--accent); color: var(--accent); }
+#helpBtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ── Help panel ── */
+#helpPanel {
+  position: fixed;
+  top: 49px;
+  right: 0;
+  width: 268px;
+  height: calc(100vh - 49px);
+  background: #10111d;
+  border-left: 1px solid var(--border);
+  z-index: 500;
+  overflow-y: auto;
+  padding: 16px;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+}
+#helpPanel.open { transform: translateX(0); }
+.help-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.help-title span { font-size: 13px; font-weight: 500; }
+.help-title button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.15s;
+}
+.help-title button:hover { color: var(--text); }
+.help-section { margin-bottom: 18px; }
+.help-section h3 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.help-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.help-row small { color: var(--muted); font-size: 10px; display: block; margin-top: 1px; }
+.help-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.help-swatch.sq { border-radius: 2px; }
+.help-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.help-step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Beginner guide modal ── */
+#guideOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+#guideOverlay.hidden { display: none; }
+#guideModal {
+  background: #14151f;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+  overflow: hidden;
+}
+.guide-header {
+  padding: 28px 28px 20px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.guide-logo {
+  font-size: 32px;
+  margin-bottom: 10px;
+  color: var(--accent);
+}
+.guide-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.guide-header p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.guide-body { padding: 22px 28px; }
+.guide-what {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-bottom: 14px;
+}
+.guide-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.guide-icon {
+  font-size: 22px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.guide-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.guide-row-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.guide-tip {
+  margin-top: 18px;
+  padding: 10px 14px;
+  background: rgba(55,138,221,0.08);
+  border: 1px solid rgba(55,138,221,0.2);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--accent);
+  line-height: 1.5;
+}
+.guide-footer {
+  padding: 16px 28px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.guide-noshow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.guide-noshow input { accent-color: var(--accent); cursor: pointer; }
+@media (max-width: 480px) {
+  .guide-header { padding: 20px 18px 16px; }
+  .guide-body { padding: 16px 18px; }
+  .guide-footer { padding: 12px 18px 18px; }
+  .guide-footer .btn { width: 100%; justify-content: center; }
+}

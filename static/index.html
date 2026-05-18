@@ -3,423 +3,74 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Phantom Limb — Adaptive Spatial-Sorting Engine</title>
-    <style>
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      :root {
-        --bg: #0c0d14;
-        --surface: #14151f;
-        --surface2: #1a1b28;
-        --border: #2a2b3a;
-        --text: #e0e0ea;
-        --muted: #7a7a8a;
-        --accent: #378add;
-        --green: #5dca7b;
-        --red: #e24b4a;
-        --amber: #ef9f27;
-        --purple: #7f77dd;
-        --font: system-ui, -apple-system, "Segoe UI", sans-serif;
-        --mono: "SF Mono", "Fira Code", monospace;
-      }
-      body {
-        background: var(--bg);
-        color: var(--text);
-        font-family: var(--font);
-        overflow: hidden;
-        height: 100vh;
-      }
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 20px;
-        border-bottom: 1px solid var(--border);
-      }
-      .header h1 {
-        font-size: 16px;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-      }
-      .header h1 span {
-        color: var(--accent);
-      }
-      .header .status {
-        font-size: 11px;
-        color: var(--muted);
-        font-family: var(--mono);
-      }
-      .header .nav-link {
-        font-size: 12px;
-        color: var(--accent);
-        text-decoration: none;
-        border: 1px solid var(--accent);
-        padding: 4px 10px;
-        border-radius: 5px;
-        opacity: 0.75;
-        transition: opacity 0.15s;
-      }
-      .header .nav-link:hover { opacity: 1; }
-
-      .grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: 1fr 1fr;
-        gap: 1px;
-        height: calc(100vh - 49px);
-        background: var(--border);
-      }
-      .panel {
-        background: var(--surface);
-        position: relative;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
-      .panel-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 14px;
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-      .panel-label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: var(--muted);
-        font-weight: 500;
-      }
-      .panel-badge {
-        font-size: 10px;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-family: var(--mono);
-      }
-      .panel-content {
-        flex: 1;
-        position: relative;
-        overflow: hidden;
-      }
-      #camera-feed,
-      #annotated-canvas {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-      }
-      #annotated-canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-      }
-      .btn {
-        padding: 8px 18px;
-        border: none;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        font-family: var(--font);
-        transition: all 0.15s;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .btn-primary {
-        background: var(--accent);
-        color: white;
-      }
-      .btn-primary:hover {
-        background: #2a6fc0;
-      }
-      .btn-primary:disabled {
-        background: #333;
-        color: #666;
-        cursor: not-allowed;
-      }
-      .btn-sm {
-        padding: 5px 12px;
-        font-size: 11px;
-      }
-      .btn-outline {
-        background: transparent;
-        border: 1px solid var(--border);
-        color: var(--muted);
-      }
-      .btn-outline:hover {
-        border-color: var(--accent);
-        color: var(--text);
-      }
-      .camera-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        gap: 12px;
-        z-index: 5;
-      }
-      .camera-overlay.hidden {
-        display: none;
-      }
-      .steps-list {
-        padding: 10px 14px;
-        overflow-y: auto;
-        flex: 1;
-      }
-      .step-item {
-        display: flex;
-        gap: 10px;
-        padding: 8px 10px;
-        border-radius: 6px;
-        margin-bottom: 6px;
-        background: var(--surface2);
-        border: 1px solid transparent;
-        transition: all 0.3s;
-      }
-      .step-item.active {
-        border-color: var(--accent);
-        background: rgba(55, 138, 221, 0.1);
-      }
-      .step-item.done {
-        opacity: 0.5;
-      }
-      .step-num {
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 11px;
-        font-weight: 500;
-        background: var(--border);
-        color: var(--muted);
-        flex-shrink: 0;
-      }
-      .step-item.active .step-num {
-        background: var(--accent);
-        color: white;
-      }
-      .step-item.done .step-num {
-        background: var(--green);
-        color: white;
-      }
-      .step-text {
-        font-size: 12px;
-        line-height: 1.5;
-      }
-      .step-label {
-        color: var(--text);
-        font-weight: 500;
-      }
-      .step-reason {
-        color: var(--muted);
-        font-size: 11px;
-      }
-      .sim-canvas {
-        width: 100%;
-        height: 100%;
-        display: block;
-      }
-      .agent-label {
-        font-size: 10px;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-weight: 500;
-        font-family: var(--mono);
-      }
-      .eval-card {
-        margin: 8px 14px;
-        padding: 10px 12px;
-        border-radius: 8px;
-        background: var(--surface2);
-        border: 1px solid var(--border);
-        font-size: 12px;
-        display: none;
-      }
-      .eval-card.visible { display: block; }
-      .eval-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 6px;
-      }
-      .eval-label {
-        font-size: 10px;
-        font-family: var(--mono);
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-      .eval-stars { color: var(--amber); font-size: 13px; letter-spacing: 1px; }
-      .eval-score {
-        font-size: 11px;
-        font-weight: 600;
-        padding: 1px 7px;
-        border-radius: 10px;
-        margin-left: auto;
-      }
-      .eval-critique { color: var(--text); margin-bottom: 6px; line-height: 1.5; }
-      .eval-suggestions { list-style: none; padding: 0; margin: 0; }
-      .eval-suggestions li {
-        color: var(--muted);
-        font-size: 11px;
-        padding: 2px 0 2px 14px;
-        position: relative;
-        line-height: 1.4;
-      }
-      .eval-suggestions li::before {
-        content: "→";
-        position: absolute;
-        left: 0;
-        color: var(--accent);
-      }
-      .agent-1 {
-        background: rgba(127, 119, 221, 0.15);
-        color: var(--purple);
-      }
-      .agent-2 {
-        background: rgba(93, 202, 123, 0.15);
-        color: var(--green);
-      }
-      .loading-bar {
-        height: 2px;
-        background: var(--surface2);
-        overflow: hidden;
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        z-index: 10;
-      }
-      .loading-bar .fill {
-        height: 100%;
-        background: var(--accent);
-        width: 0%;
-        transition: width 0.3s;
-      }
-      .loading-bar.active .fill {
-        animation: loading 2s ease-in-out infinite;
-      }
-      @keyframes loading {
-        0% {
-          width: 0;
-          margin-left: 0;
-        }
-        50% {
-          width: 40%;
-        }
-        100% {
-          width: 0;
-          margin-left: 100%;
-        }
-      }
-      .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        color: var(--muted);
-        gap: 8px;
-        font-size: 13px;
-      }
-      .log-line {
-        font-size: 11px;
-        font-family: var(--mono);
-        padding: 2px 14px;
-        color: var(--muted);
-        line-height: 1.8;
-      }
-      .log-line.detect {
-        color: var(--purple);
-      }
-      .log-line.plan {
-        color: var(--green);
-      }
-      .log-line.error {
-        color: var(--red);
-      }
-      .bottom-bar {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 14px;
-        border-top: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-      .tag-strip {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        padding: 8px 12px;
-        border-top: 1px solid var(--border);
-        flex-shrink: 0;
-        min-height: 42px;
-        max-height: 90px;
-        overflow-y: auto;
-        background: var(--surface);
-      }
-      .obj-tag {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 3px 9px 3px 5px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 500;
-        border: 1px solid;
-        cursor: default;
-        white-space: nowrap;
-        transition: opacity 0.2s;
-      }
-      .obj-tag:hover {
-        opacity: 0.8;
-      }
-      .tag-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        flex-shrink: 0;
-      }
-      .tag-num {
-        font-family: var(--mono);
-        font-size: 10px;
-        opacity: 0.7;
-      }
-      .tag-source {
-        font-size: 9px;
-        opacity: 0.6;
-        font-family: var(--mono);
-      }
-      .zone-tag {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 3px 9px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 500;
-        background: rgba(226, 75, 74, 0.12);
-        color: #e24b4a;
-        border: 1px solid rgba(226, 75, 74, 0.3);
-        white-space: nowrap;
-      }
-    </style>
+    <title>SafeArc — Adaptive Spatial-Sorting Engine</title>
+    <link rel="stylesheet" href="/static/css/layout.css" />
+    <link rel="stylesheet" href="/static/css/components.css" />
+    <link rel="stylesheet" href="/static/css/ui.css" />
   </head>
   <body>
+    <div id="tooltip"></div>
+
+    <!-- Beginner guide overlay -->
+    <div id="guideOverlay" class="hidden">
+      <div id="guideModal">
+        <div class="guide-header">
+          <div class="guide-logo">◈</div>
+          <h2>Welcome to SafeArc</h2>
+          <p>An AI-powered sorting engine that plans every move before the robot arm touches anything.</p>
+        </div>
+        <div class="guide-body">
+          <div class="guide-what">Here's how it works — 4 simple steps</div>
+
+          <div class="guide-row">
+            <div class="guide-icon">📷</div>
+            <div>
+              <div class="guide-row-title">Point your camera at the workspace</div>
+              <div class="guide-row-desc">Aim at a table with 3–10 objects in view. Works best in good lighting. You can also upload a photo instead.</div>
+            </div>
+          </div>
+
+          <div class="guide-row">
+            <div class="guide-icon">🔍</div>
+            <div>
+              <div class="guide-row-title">Click "Scan workspace"</div>
+              <div class="guide-row-desc">The AI looks at your scene, finds every object, and draws a coloured box around each one. Takes about 3–5 seconds.</div>
+            </div>
+          </div>
+
+          <div class="guide-row">
+            <div class="guide-icon">🗂️</div>
+            <div>
+              <div class="guide-row-title">Click "Generate plan"</div>
+              <div class="guide-row-desc">A second AI figures out the best order to sort the objects — grouping similar things together and avoiding any people nearby.</div>
+            </div>
+          </div>
+
+          <div class="guide-row">
+            <div class="guide-icon">🤖</div>
+            <div>
+              <div class="guide-row-title">Click "Execute in sim"</div>
+              <div class="guide-row-desc">Watch a 3D robot arm carry out the full sorting plan — a safe digital preview before anything moves in the real world.</div>
+            </div>
+          </div>
+
+          <div class="guide-tip">
+            💡 The red shaded areas on screen are <b>no-go zones</b> — the robot will never move into them. If a person is detected near an object, that step is safely skipped.
+          </div>
+        </div>
+        <div class="guide-footer">
+          <label class="guide-noshow">
+            <input type="checkbox" id="guideNoShow"> Don't show this again
+          </label>
+          <button class="btn btn-primary" onclick="closeGuide()">Get started →</button>
+        </div>
+      </div>
+    </div>
+
     <div class="header">
-      <h1><span>PHANTOM</span> LIMB</h1>
+      <h1><span>Safearc</span></h1>
       <a class="nav-link" href="/dashboard" target="_blank">Dashboard ↗</a>
+      <button id="helpBtn" onclick="toggleHelp()" aria-label="Help and legend">?</button>
       <div class="status"></div>
     </div>
 
@@ -435,15 +86,81 @@
       </button>
     </div>
 
+    <!-- Help / legend panel -->
+    <div id="helpPanel">
+      <div class="help-title">
+        <span>How it works</span>
+        <button onclick="toggleHelp()">×</button>
+      </div>
+
+      <div class="help-section">
+        <h3>How to use</h3>
+        <div class="help-step"><div class="help-step-num">1</div><span>Start your camera (or upload a photo) and point it at your workspace</span></div>
+        <div class="help-step"><div class="help-step-num">2</div><span>Click <b>Scan workspace</b> — the AI identifies every object on screen</span></div>
+        <div class="help-step"><div class="help-step-num">3</div><span>Click <b>Generate plan</b> — the AI decides the safest order to sort them</span></div>
+        <div class="help-step"><div class="help-step-num">4</div><span>Click <b>Execute in sim</b> — watch the robot arm carry out the plan in 3D</span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>Object colour key</h3>
+        <div class="help-row"><div class="help-swatch" style="background:#378ADD"></div><span>Kitchen items</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#5dca7b"></div><span>Reading materials</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#d4537e"></div><span>Writing supplies</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#5d9eca"></div><span>Electronics</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#ef9f27"></div><span>Beverages</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#97c459"></div><span>Tools</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#888"></div><span>Everything else</span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>No-go zones (highlighted areas)</h3>
+        <div class="help-row"><div class="help-swatch sq" style="background:rgba(226,75,74,0.45);border:1px solid #e24b4a"></div><span>Person detected nearby<small>Robot stays out — any objects here will be skipped</small></span></div>
+        <div class="help-row"><div class="help-swatch sq" style="background:rgba(245,166,35,0.45);border:1px solid #f5a623"></div><span>Robot arm base area<small>Where the arm is mounted — kept clear</small></span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>Plan step colours</h3>
+        <div class="help-row"><div class="help-swatch" style="background:var(--border)"></div><span>Waiting to be done</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--accent)"></div><span>Currently moving</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--green)"></div><span>Completed</span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--amber)"></div><span>Object has moved — plan updating<small>The AI noticed something shifted position</small></span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--red)"></div><span>Path is blocked<small>Something is in the way — AI is finding a new route</small></span></div>
+        <div class="help-row"><div class="help-swatch" style="background:#555"></div><span>Skipped — no safe route found</span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>Live status indicator</h3>
+        <div class="help-row"><div class="help-swatch" style="background:var(--green)"></div><span><b>● tracking</b><small>Watching for changes in real time</small></span></div>
+        <div class="help-row"><div class="help-swatch" style="background:var(--amber)"></div><span><b>⟳ recalculating</b><small>Something moved or is blocked — creating a new plan</small></span></div>
+      </div>
+
+      <button onclick="openGuide()" style="
+        width: 100%; margin-top: 4px;
+        background: transparent; border: 1px solid var(--border);
+        color: var(--muted); border-radius: 8px;
+        padding: 9px 0; font-size: 12px; cursor: pointer;
+        font-family: var(--font); transition: all 0.15s;
+      " onmouseenter="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+         onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+        ↩ Show beginner guide
+      </button>
+    </div>
+
     <div class="grid">
       <!-- Panel 1: Camera / Input -->
       <div class="panel" id="p-camera">
         <div class="panel-header">
-          <span class="panel-label">Workspace input</span>
-          <span class="agent-label agent-1">Agent 1: perception</span>
+          <span class="panel-label" data-tip="Your camera or photo — point it at your workspace and hit 'Scan workspace'">Workspace input</span>
+          <span class="agent-label agent-1" data-tip="AI that identifies every object in the scene and marks where they are">Agent 1: perception</span>
         </div>
         <div class="panel-content">
           <video id="camera-feed" autoplay playsinline></video>
+          <canvas id="live-overlay" style="
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+          "></canvas>
           <img
             id="snapshot-img"
             style="
@@ -453,6 +170,19 @@
               object-fit: contain;
             "
           />
+          <div id="trackingBadge" data-tip="Watching for changes — the AI will update the plan if objects move" data-tip-pos="up" style="
+            display: none;
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            background: rgba(0,0,0,0.72);
+            font-family: var(--mono);
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            z-index: 10;
+            pointer-events: none;
+          ">● tracking</div>
           <div class="camera-overlay" id="cameraOverlay">
             <div style="color: var(--muted); font-size: 13px">
               No camera active
@@ -460,27 +190,54 @@
           </div>
         </div>
         <div class="bottom-bar">
-          <button
-            class="btn btn-primary"
-            id="btnCamera"
-            onclick="toggleCamera()"
-          >
-            Start camera
-          </button>
+          <div style="position:relative;display:inline-block">
+            <button
+              class="btn btn-primary"
+              id="btnCamera"
+              onclick="toggleCameraMenu(event)"
+              data-tip-pos="up"
+              data-tip="Choose between live video or single photo capture"
+            >
+              Start camera
+            </button>
+            <div id="cameraMenu" style="
+              display:none; position:absolute; bottom:calc(100% + 6px); left:0;
+              background:#1a1d27; border:1px solid #2a2d3a; border-radius:8px;
+              overflow:hidden; min-width:150px; z-index:100; box-shadow:0 4px 16px rgba(0,0,0,0.5)
+            ">
+              <button onclick="startCameraMode('photo')" style="
+                display:block; width:100%; text-align:left; padding:9px 14px;
+                background:none; border:none; color:#e2e8f0; font-size:13px; cursor:pointer;
+              " onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='none'">
+                📷 Click photo
+              </button>
+              <button onclick="startCameraMode('video')" style="
+                display:block; width:100%; text-align:left; padding:9px 14px;
+                background:none; border:none; color:#e2e8f0; font-size:13px; cursor:pointer;
+                border-top:1px solid #2a2d3a;
+              " onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='none'">
+                🎥 Capture video
+              </button>
+            </div>
+          </div>
           <button
             class="btn btn-primary"
             id="btnScan"
             onclick="scanWorkspace()"
             disabled
+            data-tip-pos="up"
+            data-tip="Take a snapshot and let the AI find all the objects (takes a few seconds)"
           >
             Scan workspace
           </button>
           <button
             class="btn btn-outline btn-sm"
             id="btnUpload"
-            onclick="uploadImage()"
+            onclick="uploadFile()"
+            data-tip-pos="up"
+            data-tip="Upload a photo of your workspace"
           >
-            Upload photo
+            Upload
           </button>
           <input
             type="file"
@@ -498,10 +255,11 @@
       <!-- Panel 2: Annotated Workspace -->
       <div class="panel" id="p-annotated">
         <div class="panel-header">
-          <span class="panel-label">Detected objects</span>
+          <span class="panel-label" data-tip="Everything the AI found in your workspace — coloured boxes show each object, red areas are zones the robot must avoid">Detected objects</span>
           <span
             class="panel-badge"
             id="objCount"
+            data-tip="How many objects and no-go zones were found"
             style="background: rgba(55, 138, 221, 0.15); color: var(--accent)"
             >—</span
           >
@@ -519,8 +277,8 @@
       <!-- Panel 3: Sorting Plan -->
       <div class="panel" id="p-plan">
         <div class="panel-header">
-          <span class="panel-label">Sorting plan</span>
-          <span class="agent-label agent-2">Agent 2: planner</span>
+          <span class="panel-label" data-tip="The robot's step-by-step plan for sorting your workspace — objects are grouped by type and moved safely">Sorting plan</span>
+          <span class="agent-label agent-2" data-tip="AI that decides the best order to sort the objects while keeping humans safe">Agent 2: planner</span>
         </div>
         <div class="steps-list" id="stepsList">
           <div class="empty-state" id="planEmpty">
@@ -531,7 +289,7 @@
         <!-- AI Evaluator card — shown after plan generation -->
         <div class="eval-card" id="evalCard">
           <div class="eval-header">
-            <span class="eval-label">AI Review</span>
+            <span class="eval-label" data-tip="An AI assessment of how good this sorting plan is, based on previous sessions">AI Review</span>
             <span class="eval-stars" id="evalStars"></span>
             <span class="eval-score" id="evalScore"></span>
           </div>
@@ -545,6 +303,8 @@
             id="btnPlan"
             onclick="generatePlan()"
             disabled
+            data-tip-pos="up"
+            data-tip="Ask the AI to create a sorting plan for your objects (takes a few seconds)"
           >
             Generate plan
           </button>
@@ -553,6 +313,8 @@
             id="btnExec"
             onclick="executePlan()"
             disabled
+            data-tip-pos="up"
+            data-tip="Watch the robot arm carry out the plan in 3D — a safe preview before any real movement"
           >
             Execute in sim
           </button>
@@ -572,10 +334,11 @@
       <!-- Panel 4: Three.js Simulation -->
       <div class="panel" id="p-sim">
         <div class="panel-header">
-          <span class="panel-label">Digital twin simulation</span>
+          <span class="panel-label" data-tip="A 3D robot arm carries out the sorting plan — see exactly what will happen before touching anything real">Digital twin simulation</span>
           <span
             class="panel-badge"
             id="simStatus"
+            data-tip="Current state of the simulation"
             style="background: rgba(93, 202, 123, 0.15); color: var(--green)"
             >idle</span
           >
@@ -598,1098 +361,10 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>
-      const API = "";
-      let stream = null;
-      let workspaceData = null;
-      let planData = null;
-      let sourceImage = null;
-      let _logPoll = null;
-
-      function startLogPolling(onLog) {
-        _logPoll = setInterval(async () => {
-          try {
-            const r = await fetch(`${API}/api/state`);
-            const d = await r.json();
-            const logs = d.recent_log || [];
-            if (logs.length > 0) onLog(logs[logs.length - 1].msg);
-          } catch (_) {}
-        }, 800);
-      }
-
-      function stopLogPolling() {
-        if (_logPoll) { clearInterval(_logPoll); _logPoll = null; }
-      }
-
-      // ============================================================
-      // CAMERA
-      // ============================================================
-
-      async function toggleCamera() {
-        const btn = document.getElementById("btnCamera");
-        const video = document.getElementById("camera-feed");
-        const overlay = document.getElementById("cameraOverlay");
-
-        if (stream) {
-          stream.getTracks().forEach((t) => t.stop());
-          stream = null;
-          video.srcObject = null;
-          btn.textContent = "Start camera";
-          document.getElementById("btnScan").disabled = true;
-          overlay.classList.remove("hidden");
-          return;
-        }
-
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: "environment",
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-          });
-          video.srcObject = stream;
-          btn.textContent = "Stop camera";
-          document.getElementById("btnScan").disabled = false;
-          overlay.classList.add("hidden");
-        } catch (e) {
-          const overlay = document.getElementById("cameraOverlay");
-          overlay.classList.remove("hidden");
-          overlay.innerHTML = `<div style="color:var(--red);font-size:13px">Camera access denied</div><div style="color:var(--muted);font-size:11px;margin-top:4px">Use "Upload photo" instead</div>`;
-        }
-      }
-
-      function uploadImage() {
-        document.getElementById("fileInput").click();
-      }
-
-      function handleUpload(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function (e) {
-          const img = document.getElementById("snapshot-img");
-          img.src = e.target.result;
-          img.style.display = "block";
-          document.getElementById("camera-feed").style.display = "none";
-          document.getElementById("cameraOverlay").classList.add("hidden");
-          sourceImage = e.target.result;
-          runDetection(sourceImage);
-        };
-        reader.readAsDataURL(file);
-      }
-
-      // ============================================================
-      // DETECTION (Agent 1)
-      // ============================================================
-
-      async function scanWorkspace() {
-        const video = document.getElementById("camera-feed");
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext("2d").drawImage(video, 0, 0);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-
-        const img = document.getElementById("snapshot-img");
-        img.src = dataUrl;
-        img.style.display = "block";
-        video.style.display = "none";
-
-        sourceImage = dataUrl;
-        await runDetection(dataUrl);
-      }
-
-      async function runDetection(imageDataUrl) {
-        const loader = document.getElementById("detectLoader");
-        loader.classList.add("active");
-        document.getElementById("btnScan").disabled = true;
-        document.getElementById("btnPlan").disabled = true;
-        document.getElementById("objCount").textContent = "detecting...";
-        startLogPolling(msg => {
-          document.getElementById("objCount").textContent = msg;
-        });
-
-        try {
-          const base64 = imageDataUrl.includes(",")
-            ? imageDataUrl.split(",")[1]
-            : imageDataUrl;
-
-          const resp = await fetch(`${API}/api/detect`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: base64 }),
-          });
-
-          if (!resp.ok) {
-            const err = await resp.json();
-            throw new Error(err.error || "Detection failed");
-          }
-
-          workspaceData = await resp.json();
-          const objs = workspaceData.workspace.objects;
-          const zones = workspaceData.workspace.safety_zones;
-
-          document.getElementById("objCount").textContent =
-            `${objs.length} objects, ${zones.length} zones`;
-          document.getElementById("btnPlan").disabled = false;
-
-          drawAnnotations(sourceImage, workspaceData);
-          updateSimWorkspace(workspaceData);
-        } catch (e) {
-          document.getElementById("objCount").textContent = "error";
-          document.getElementById("objCount").style.color = "var(--red)";
-          console.error("Detection error:", e.message);
-        }
-
-        stopLogPolling();
-        loader.classList.remove("active");
-        document.getElementById("btnScan").disabled = !stream;
-      }
-
-      // ============================================================
-      // ANNOTATION CANVAS
-      // ============================================================
-
-      const CAT_COLORS = {
-        kitchen: "#378ADD",
-        reading: "#5dca7b",
-        writing: "#d4537e",
-        electronics: "#5d9eca",
-        beverage: "#ef9f27",
-        tools: "#97c459",
-        other: "#888",
-      };
-
-      // Returns a numFn for drawAnnotations/renderTagStrip that uses plan step order.
-      // Call after planData is set. numFn(obj, idx) → {num: string, skip: bool}
-      function makePlanNumFn(plan) {
-        const stepMap = {};
-        for (const step of plan.sequence) {
-          stepMap[step.object_id] = { num: String(step.step), skip: !!step.skip };
-        }
-        return (obj, idx) => stepMap[obj.id] || { num: String(idx + 1), skip: false };
-      }
-
-      function drawAnnotations(imgSrc, data, numFn = null) {
-        document.getElementById("annotEmpty").style.display = "none";
-        const canvas = document.getElementById("annotated-canvas");
-        const ctx = canvas.getContext("2d");
-
-        const img = new Image();
-        img.onload = function () {
-          canvas.width = img.width;
-          canvas.height = img.height;
-          canvas.style.display = "block";
-          ctx.drawImage(img, 0, 0);
-
-          const ws = data.workspace;
-          const w = img.width,
-            h = img.height;
-
-          // --- Safety zones ---
-          for (const zone of ws.safety_zones) {
-            const pts = zone.polygon;
-            const isRobotBase = zone.type === "robot_base";
-            const zoneRgb = isRobotBase ? "245,166,35" : "226,75,74";
-            ctx.fillStyle = `rgba(${zoneRgb},0.18)`;
-            ctx.beginPath();
-            ctx.moveTo(pts[0].x * w, pts[0].y * h);
-            for (let i = 1; i < pts.length; i++)
-              ctx.lineTo(pts[i].x * w, pts[i].y * h);
-            ctx.closePath();
-            ctx.fill();
-            ctx.strokeStyle = `rgb(${zoneRgb})`;
-            ctx.lineWidth = 2;
-            ctx.setLineDash([8, 4]);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Zone label pill
-            const lx = pts[0].x * w + 8,
-              ly = pts[0].y * h + 22;
-            ctx.fillStyle = `rgba(${zoneRgb},0.85)`;
-            const lw = 105,
-              lh = 20,
-              lr = 4;
-            ctx.beginPath();
-            ctx.roundRect(lx, ly - 15, lw, lh, lr);
-            ctx.fill();
-            ctx.fillStyle = "white";
-            ctx.font = "bold 11px system-ui";
-            ctx.fillText(
-              isRobotBase ? "⚠ ROBOT BASE" : "⚠ SAFETY ZONE",
-              lx + 6,
-              ly - 1,
-            );
-          }
-
-          // --- Objects: clean numbered marker only on canvas ---
-          ws.objects.forEach((obj, idx) => {
-            const bb = obj.bounding_box;
-            const x1 = bb.top_left.x * w,
-              y1 = bb.top_left.y * h;
-            const x2 = bb.bottom_right.x * w,
-              y2 = bb.bottom_right.y * h;
-            const numInfo = numFn ? numFn(obj, idx) : { num: String(idx + 1), skip: false };
-            const color = numInfo.skip ? "#888" : (CAT_COLORS[obj.category] || "#888");
-
-            // Bounding box
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
-            if (numInfo.skip) ctx.setLineDash([5, 3]);
-            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-            ctx.setLineDash([]);
-
-            // Number badge — clean, small, always legible
-            const r = 12;
-            const bx = x1 + r,
-              by = y1 + r;
-            ctx.beginPath();
-            ctx.arc(bx, by, r, 0, Math.PI * 2);
-            ctx.fillStyle = numInfo.skip ? "rgba(136,136,136,0.7)" : color;
-            ctx.fill();
-            ctx.fillStyle = "white";
-            ctx.font = `bold 12px system-ui`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(numInfo.num, bx, by);
-            ctx.textAlign = "left";
-            ctx.textBaseline = "alphabetic";
-
-            // Coord source micro-badge
-            if (obj.coord_source === "opencv") {
-              ctx.fillStyle = "rgba(0,0,0,0.55)";
-              ctx.beginPath();
-              ctx.roundRect(x2 - 44, y2 - 15, 42, 13, 3);
-              ctx.fill();
-              ctx.fillStyle = "#5dca7b";
-              ctx.font = "9px monospace";
-              ctx.textAlign = "right";
-              ctx.fillText("cv2", x2 - 3, y2 - 5);
-              ctx.textAlign = "left";
-            }
-          });
-        };
-        img.src = imgSrc;
-
-        // Build tag strip
-        renderTagStrip(data.workspace);
-      }
-
-      function renderTagStrip(ws, numFn = null) {
-        const strip = document.getElementById("tagStrip");
-        if (!strip) return;
-        strip.innerHTML = "";
-        strip.style.display = "flex";
-
-        ws.objects.forEach((obj, idx) => {
-          const numInfo = numFn ? numFn(obj, idx) : { num: String(idx + 1), skip: false };
-          const color = numInfo.skip ? "#888" : (CAT_COLORS[obj.category] || "#888");
-          const tag = document.createElement("span");
-          tag.className = "obj-tag";
-          tag.style.cssText = `
-            background: ${color}1a;
-            border-color: ${color}55;
-            color: ${color};
-            ${numInfo.skip ? "opacity:0.55;" : ""}
-        `;
-          tag.innerHTML = `
-            <span class="tag-dot" style="background:${color}"></span>
-            <span class="tag-num">${numInfo.num}</span>
-            <span style="color:var(--text);${numInfo.skip ? "text-decoration:line-through" : ""}">${obj.label.replace(/_/g, " ")}</span>
-            <span style="color:var(--muted);font-size:10px">${obj.category}</span>
-            <span class="tag-source">${obj.coord_source === "opencv" ? "cv2" : "~"}</span>
-        `;
-          strip.appendChild(tag);
-        });
-
-        for (const zone of ws.safety_zones) {
-          const tag = document.createElement("span");
-          tag.className = "zone-tag";
-          tag.textContent = `⚠ ${zone.label || "human"}`;
-          strip.appendChild(tag);
-        }
-      }
-
-      // ============================================================
-      // PLANNING (Agent 2)
-      // ============================================================
-
-      async function generatePlan() {
-        const loader = document.getElementById("planLoader");
-        loader.classList.add("active");
-        document.getElementById("btnPlan").disabled = true;
-        document.getElementById("planStatus").textContent = "planning...";
-        document.getElementById("planEmpty").style.display = "none";
-        startLogPolling(msg => {
-          document.getElementById("planStatus").textContent = msg;
-        });
-
-        try {
-          const resp = await fetch(`${API}/api/plan`, { method: "POST" });
-          if (!resp.ok) {
-            const err = await resp.json();
-            throw new Error(err.error || "Planning failed");
-          }
-
-          planData = await resp.json();
-          renderSteps(planData);
-          addStepLabels();
-          if (workspaceData && sourceImage) {
-            const nf = makePlanNumFn(planData);
-            drawAnnotations(sourceImage, workspaceData, nf);
-            renderTagStrip(workspaceData.workspace, nf);
-          }
-          document.getElementById("btnExec").disabled = false;
-          document.getElementById("planStatus").textContent =
-            `${planData.sequence.length} steps — ${planData.strategy || ""}`;
-
-          // Run evaluator in background — don't block plan display
-          runEvaluator();
-        } catch (e) {
-          document.getElementById("planStatus").style.color = "var(--red)";
-          document.getElementById("planStatus").textContent = "error: " + e.message;
-        }
-
-        stopLogPolling();
-        loader.classList.remove("active");
-        document.getElementById("btnPlan").disabled = false;
-      }
-
-      async function runEvaluator() {
-        try {
-          const resp = await fetch(`${API}/api/evaluate`, { method: "POST" });
-          if (!resp.ok) return;
-          const ev = await resp.json();
-          renderEvalCard(ev);
-        } catch (_) {}
-      }
-
-      function renderEvalCard(ev) {
-        const card = document.getElementById("evalCard");
-        if (!ev || ev.predicted_score == null) { card.classList.remove("visible"); return; }
-
-        const score = ev.predicted_score;
-        const stars = "★".repeat(score) + "☆".repeat(5 - score);
-        const color = score >= 4 ? "var(--green)" : score >= 3 ? "var(--amber)" : "var(--red)";
-
-        document.getElementById("evalStars").textContent = stars;
-        document.getElementById("evalScore").textContent = `${score}/5`;
-        document.getElementById("evalScore").style.cssText =
-          `background:${color}22;color:${color};font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;margin-left:auto`;
-        document.getElementById("evalCritique").textContent = ev.critique || "";
-
-        const ul = document.getElementById("evalSuggestions");
-        ul.innerHTML = "";
-        (ev.suggestions || []).forEach(s => {
-          const li = document.createElement("li");
-          li.textContent = s;
-          ul.appendChild(li);
-        });
-
-        card.classList.add("visible");
-      }
-
-      function renderSteps(plan) {
-        const list = document.getElementById("stepsList");
-        list.innerHTML = "";
-
-        // Build id→label map from workspace if available
-        const labelMap = {};
-        if (workspaceData) {
-          workspaceData.workspace.objects.forEach((o) => {
-            labelMap[o.id] = o.label.replace(/_/g, " ");
-          });
-        }
-
-        if (plan.reasoning) {
-          const r = document.createElement("div");
-          r.style.cssText =
-            "padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--muted);font-style:italic;border-left:2px solid var(--border);padding-left:10px";
-          r.textContent = plan.reasoning;
-          list.appendChild(r);
-        }
-
-        const enforcedCount = plan.sequence.filter(s =>
-          s.reason && s.reason.includes("[safety enforced]")
-        ).length;
-        const skippedCount = plan.sequence.filter(s => s.skip).length;
-        if (enforcedCount > 0) {
-          const warn = document.createElement("div");
-          warn.style.cssText =
-            "padding:6px 10px;margin-bottom:8px;font-size:11px;color:var(--amber);" +
-            "border-left:2px solid var(--amber);padding-left:10px;font-family:var(--mono)";
-          warn.textContent =
-            `⚠ Safety enforcement relocated ${enforcedCount} target(s) away from safety zones`;
-          list.appendChild(warn);
-        }
-        if (skippedCount > 0) {
-          const skip = document.createElement("div");
-          skip.style.cssText =
-            "padding:6px 10px;margin-bottom:8px;font-size:11px;color:#e24b4a;" +
-            "border-left:2px solid #e24b4a;padding-left:10px;font-family:var(--mono)";
-          skip.textContent =
-            `✖ ${skippedCount} step(s) skipped — no safe carry path found`;
-          list.appendChild(skip);
-        }
-
-        for (const step of plan.sequence) {
-          const label = labelMap[step.object_id] || step.object_id;
-          const enforced = step.reason && step.reason.includes("[safety enforced]");
-          const skipped = !!step.skip;
-          const el = document.createElement("div");
-          el.className = "step-item" + (skipped ? " step-skipped" : "");
-          el.id = `step-${step.step}`;
-          const reasonText = (step.reason || "")
-            .replace(" [safety enforced]", "")
-            .replace(" [skipped: no safe path available]", "")
-            .trim();
-          el.innerHTML = skipped
-            ? `
-            <div class="step-num" style="opacity:0.4">${step.step}</div>
-            <div class="step-text" style="opacity:0.5;text-decoration:line-through">
-                <div class="step-label">${label} — no safe path</div>
-                <div class="step-reason">${reasonText}</div>
-            </div>
-            <span style="color:#e24b4a;font-size:11px;margin-left:auto;align-self:center">✖ skipped</span>`
-            : `
-            <div class="step-num">${step.step}</div>
-            <div class="step-text">
-                <div class="step-label">${label} → (${step.to.x.toFixed(2)}, ${step.to.y.toFixed(2)})${enforced ? ' <span style="color:var(--amber);font-size:10px">⚠ relocated</span>' : ''}</div>
-                <div class="step-reason">${reasonText}</div>
-            </div>`;
-          list.appendChild(el);
-        }
-      }
-
-      // ============================================================
-      // THREE.JS SIMULATION
-      // ============================================================
-
-      const simCanvas = document.getElementById("simCanvas");
-      let renderer,
-        scene,
-        camera,
-        armRoot,
-        turret,
-        seg1,
-        seg2,
-        wrist,
-        clawL,
-        clawR;
-      let simBlocks = [],
-        simZones = [];
-      let simPose = { base: 0, s1: 0.25, s2: -0.4 };
-      let clawSpread = 0.14;
-      let simLabels = [];
-      let simHeld = null,
-        simSorting = false,
-        simStepIdx = -1;
-      let simPhase = "idle",
-        simPhaseT = 0,
-        simPFrom = {},
-        simPTo = {};
-      let simPlan = [],
-        simTime = 0;
-
-      const ARM1_LEN = 2.2,
-        ARM2_LEN = 1.8,
-        CLAW_LEN = 0.5;
-
-      function initSim() {
-        const W = simCanvas.clientWidth,
-          H = simCanvas.clientHeight;
-        renderer = new THREE.WebGLRenderer({
-          canvas: simCanvas,
-          antialias: true,
-        });
-        renderer.setSize(W, H);
-        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        renderer.setClearColor(0x12131a);
-
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
-        camera.position.set(6, 11, 9);
-        camera.lookAt(0, 0, 0);
-
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-        const dl = new THREE.DirectionalLight(0xffffff, 0.7);
-        dl.position.set(4, 10, 6);
-        dl.castShadow = true;
-        dl.shadow.mapSize.set(1024, 1024);
-        scene.add(dl);
-        scene.add(
-          new THREE.DirectionalLight(0x8888ff, 0.2)
-            .translateX(-4)
-            .translateY(6),
-        );
-
-        const tbl = new THREE.Mesh(
-          new THREE.BoxGeometry(10, 0.25, 7),
-          new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.8 }),
-        );
-        tbl.position.y = -0.125;
-        tbl.receiveShadow = true;
-        scene.add(tbl);
-
-        const grd = new THREE.GridHelper(10, 20, 0x3a3a5a, 0x252540);
-        grd.position.y = 0.01;
-        scene.add(grd);
-
-        buildArm();
-        animateSim();
-      }
-
-      function mm(c) {
-        return new THREE.MeshStandardMaterial({
-          color: c,
-          roughness: 0.5,
-          metalness: 0.1,
-        });
-      }
-
-      function buildArm() {
-        armRoot = new THREE.Group();
-        armRoot.position.set(-3.2, 0, -2.8);
-        scene.add(armRoot);
-
-        const base = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.55, 0.65, 0.35, 24),
-          mm(0x44445e),
-        );
-        base.position.y = 0.175;
-        base.castShadow = true;
-        armRoot.add(base);
-
-        turret = new THREE.Group();
-        turret.position.y = 0.35;
-        armRoot.add(turret);
-
-        const sj = new THREE.Mesh(
-          new THREE.SphereGeometry(0.22, 16, 16),
-          mm(0x8888aa),
-        );
-        sj.position.y = 0.1;
-        turret.add(sj);
-
-        seg1 = new THREE.Group();
-        seg1.position.y = 0.1;
-        turret.add(seg1);
-        const a1 = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.1, 0.12, ARM1_LEN, 10),
-          mm(0x5a5a7a),
-        );
-        a1.position.y = ARM1_LEN / 2;
-        a1.castShadow = true;
-        seg1.add(a1);
-        const ej = new THREE.Mesh(
-          new THREE.SphereGeometry(0.17, 16, 16),
-          mm(0x8888aa),
-        );
-        ej.position.y = ARM1_LEN;
-        seg1.add(ej);
-
-        seg2 = new THREE.Group();
-        seg2.position.y = ARM1_LEN;
-        seg1.add(seg2);
-        const a2 = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.08, 0.1, ARM2_LEN, 10),
-          mm(0x5a5a7a),
-        );
-        a2.position.y = ARM2_LEN / 2;
-        a2.castShadow = true;
-        seg2.add(a2);
-        const wj = new THREE.Mesh(
-          new THREE.SphereGeometry(0.12, 12, 12),
-          mm(0x8888aa),
-        );
-        wj.position.y = ARM2_LEN;
-        seg2.add(wj);
-
-        wrist = new THREE.Group();
-        wrist.position.y = ARM2_LEN;
-        seg2.add(wrist);
-
-        const gMat = mm(0x5dca7b);
-        const palm = new THREE.Mesh(
-          new THREE.BoxGeometry(0.28, 0.12, 0.12),
-          gMat,
-        );
-        palm.position.y = 0.06;
-        wrist.add(palm);
-
-        function finger() {
-          const g = new THREE.Group();
-          const u = new THREE.Mesh(
-            new THREE.BoxGeometry(0.06, CLAW_LEN, 0.12),
-            gMat,
-          );
-          u.position.y = -CLAW_LEN / 2;
-          u.castShadow = true;
-          g.add(u);
-          const t = new THREE.Mesh(
-            new THREE.BoxGeometry(0.06, CLAW_LEN * 0.35, 0.08),
-            gMat,
-          );
-          t.position.set(0.04, -CLAW_LEN - CLAW_LEN * 0.13, 0);
-          t.rotation.z = 0.35;
-          g.add(t);
-          return g;
-        }
-        clawL = finger();
-        clawL.position.set(-0.14, 0, 0);
-        wrist.add(clawL);
-        clawR = finger();
-        clawR.position.set(0.14, 0, 0);
-        clawR.scale.x = -1;
-        wrist.add(clawR);
-      }
-
-      function setClawOpen(v) {
-        clawSpread = v;
-        clawL.position.x = -v;
-        clawR.position.x = v;
-      }
-
-      function normToWorld(nx, ny) {
-        return new THREE.Vector3((nx - 0.5) * 10, 0, (ny - 0.5) * 7);
-      }
-
-      function worldToArm(wx, wz) {
-        const dx = wx - armRoot.position.x,
-          dz = wz - armRoot.position.z;
-        return {
-          angle: Math.atan2(dx, dz),
-          dist: Math.sqrt(dx * dx + dz * dz),
-        };
-      }
-
-      function ikAngles(dist, ty) {
-        const L1 = ARM1_LEN,
-          L2 = ARM2_LEN + CLAW_LEN * 1.1;
-        const y = Math.max(0.3, ty) - 0.35;
-        const r = Math.min(dist, L1 + L2 - 0.3);
-        const d = Math.sqrt(r * r + y * y);
-        const cA = Math.acos(
-          Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d))),
-        );
-        const bA = Math.atan2(y, r);
-        const s1 = Math.PI / 2 - (cA + bA);
-        const cB = Math.acos(
-          Math.max(
-            -1,
-            Math.min(1, (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2)),
-          ),
-        );
-        return { s1, s2: -(Math.PI - cB) };
-      }
-
-      function getGripWorld() {
-        wrist.updateWorldMatrix(true, false);
-        const v = new THREE.Vector3();
-        wrist.getWorldPosition(v);
-        return v;
-      }
-
-      const C_MAP = {
-        kitchen: 0x378add,
-        reading: 0x5dca7b,
-        writing: 0xd4537e,
-        electronics: 0x5d9eca,
-        beverage: 0xef9f27,
-        tools: 0x97c459,
-        other: 0x888888,
-      };
-
-      function updateSimWorkspace(data) {
-        simBlocks.forEach((b) => scene.remove(b));
-        simBlocks = [];
-        simZones.forEach((z) => scene.remove(z));
-        simZones = [];
-
-        const ws = data.workspace;
-
-        for (const zone of ws.safety_zones) {
-          const pts = zone.polygon;
-          const xs = pts.map((p) => p.x),
-            ys = pts.map((p) => p.y);
-          const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-          const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-          const zw = (Math.max(...xs) - Math.min(...xs)) * 10;
-          const zh = (Math.max(...ys) - Math.min(...ys)) * 7;
-          const WALL_H = 0.4;
-          const zoneColor = zone.type === "robot_base" ? 0xf5a623 : 0xe24b4a;
-          const zoneMat = new THREE.MeshStandardMaterial({
-            color: zoneColor,
-            transparent: true,
-            opacity: 0.22,
-            side: THREE.DoubleSide,
-          });
-
-          // Floor fill
-          const floor = new THREE.Mesh(new THREE.PlaneGeometry(zw, zh), zoneMat);
-          const wp = normToWorld(cx, cy);
-          floor.position.set(wp.x, 0.02, wp.z);
-          floor.rotation.x = -Math.PI / 2;
-          scene.add(floor);
-          simZones.push(floor);
-
-          // Vertical wall along each edge — visible from any camera angle
-          const worldPts = pts.concat(pts[0]).map((p) => normToWorld(p.x, p.y));
-          for (let i = 0; i < worldPts.length - 1; i++) {
-            const a = worldPts[i], b = worldPts[i + 1];
-            const len = Math.sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2);
-            if (len < 0.01) continue;
-            const wall = new THREE.Mesh(
-              new THREE.PlaneGeometry(len, WALL_H),
-              zoneMat,
-            );
-            wall.position.set((a.x + b.x) / 2, WALL_H / 2, (a.z + b.z) / 2);
-            wall.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
-            scene.add(wall);
-            simZones.push(wall);
-          }
-
-          // Floor outline
-          const border = new THREE.Line(
-            new THREE.BufferGeometry().setFromPoints(
-              worldPts.map((v) => new THREE.Vector3(v.x, 0.04, v.z)),
-            ),
-            new THREE.LineBasicMaterial({ color: zoneColor }),
-          );
-          scene.add(border);
-          simZones.push(border);
-        }
-
-        for (const obj of ws.objects) {
-          const area = obj.area_ratio || 0.01;
-          const sz = Math.max(0.25, Math.min(0.8, Math.sqrt(area) * 5));
-          const color = C_MAP[obj.category] || 0x888888;
-          const mesh = new THREE.Mesh(
-            new THREE.BoxGeometry(sz, sz * 0.7, sz),
-            mm(color),
-          );
-          const wp = normToWorld(obj.centroid.x, obj.centroid.y);
-          mesh.position.set(wp.x, sz * 0.35, wp.z);
-          mesh.castShadow = true;
-          mesh.userData = {
-            id: obj.id,
-            label: obj.label,
-            oy: sz * 0.35,
-            target: null,
-          };
-          scene.add(mesh);
-          simBlocks.push(mesh);
-        }
-      }
-
-      function makeStepSprite(num) {
-        const c = document.createElement('canvas');
-        c.width = 64; c.height = 64;
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = 'rgba(18,19,26,0.88)';
-        ctx.beginPath();
-        ctx.arc(32, 32, 28, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 28px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(num), 32, 33);
-        const tex = new THREE.CanvasTexture(c);
-        const spr = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })
-        );
-        return spr;
-      }
-
-      function addStepLabels() {
-        simLabels.forEach(l => scene.remove(l));
-        simLabels = [];
-        if (!planData || !planData.sequence) return;
-        const ph = document.getElementById('simPlaceholder');
-        if (ph) ph.style.display = 'none';
-        for (const step of planData.sequence) {
-          const block = simBlocks.find(b => b.userData.id === step.object_id);
-          if (!block) continue;
-          const spr = makeStepSprite(step.step);
-          spr.scale.set(0.7, 0.7, 1);
-          spr.position.set(block.position.x, block.position.y + 1.0, block.position.z);
-          spr.userData.block = block;
-          scene.add(spr);
-          simLabels.push(spr);
-          block.userData.labelSprite = spr;
-        }
-      }
-
-      // ============================================================
-      // SIMULATION ANIMATION
-      // ============================================================
-
-      function executePlan() {
-        if (!planData || simSorting) return;
-        simPlan = planData.sequence;
-        simStepIdx = 0;
-        simSorting = true;
-        document.getElementById("simStatus").textContent = "executing";
-        document.getElementById("simStatus").style.color = "var(--amber)";
-        beginSimStep();
-      }
-
-      function beginSimStep() {
-        if (simStepIdx >= simPlan.length) {
-          simSorting = false;
-          simPhase = "idle";
-          document.getElementById("simStatus").textContent = "complete";
-          document.getElementById("simStatus").style.color = "var(--green)";
-          document
-            .querySelectorAll(".step-item")
-            .forEach((e) => e.classList.remove("active"));
-          return;
-        }
-
-        const step = simPlan[simStepIdx];
-
-        // Step was marked un-executable by the safety planner
-        if (step.skip) {
-          const stepEl = document.getElementById(`step-${step.step}`);
-          if (stepEl) stepEl.classList.add("done");
-          simStepIdx++;
-          setTimeout(beginSimStep, 150);
-          return;
-        }
-
-        const block = simBlocks.find((b) => b.userData.id === step.object_id);
-        if (!block) {
-          simStepIdx++;
-          beginSimStep();
-          return;
-        }
-
-        const tgt = normToWorld(step.to.x, step.to.y);
-        block.userData.target = tgt;
-
-        document
-          .querySelectorAll(".step-item")
-          .forEach((e) => e.classList.remove("active"));
-        const stepEl = document.getElementById(`step-${step.step}`);
-        if (stepEl) {
-          stepEl.classList.add("active");
-          stepEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }
-
-        const pa = worldToArm(block.position.x, block.position.z);
-        const ik = ikAngles(pa.dist, block.position.y + 0.1);
-        setSimPhase(
-          "reachAbove",
-          { base: simPose.base, s1: simPose.s1, s2: simPose.s2 },
-          { base: pa.angle, s1: Math.min(ik.s1 + 0.45, 1.4), s2: ik.s2 + 0.2 },
-          block,
-        );
-      }
-
-      function setSimPhase(p, from, to, block) {
-        simPhase = p;
-        simPhaseT = 0;
-        simPFrom = from;
-        simPTo = to;
-        if (block) simPFrom._block = block;
-      }
-
-      function sm(t) {
-        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      }
-      function lerp(a, b, t) {
-        return a + (b - a) * t;
-      }
-
-      function advanceSimPhase() {
-        const block = simPFrom._block || simBlocks[0];
-        const step = simPlan[simStepIdx];
-        const tgt = block.userData.target;
-
-        if (simPhase === "reachAbove") {
-          const pa = worldToArm(block.position.x, block.position.z);
-          const ik = ikAngles(pa.dist, block.position.y);
-          setSimPhase(
-            "descend",
-            { s1: simPose.s1, s2: simPose.s2 },
-            { s1: ik.s1, s2: ik.s2 },
-            block,
-          );
-        } else if (simPhase === "descend") {
-          setSimPhase("grab", { clw: clawSpread }, { clw: 0.05 }, block);
-        } else if (simPhase === "grab") {
-          simHeld = block;
-          setSimPhase(
-            "liftUp",
-            { s1: simPose.s1, s2: simPose.s2 },
-            { s1: 0.75, s2: -0.55 },
-            block,
-          );
-        } else if (simPhase === "liftUp") {
-          const ta = worldToArm(tgt.x, tgt.z);
-          setSimPhase(
-            "swing",
-            { base: simPose.base },
-            { base: ta.angle },
-            block,
-          );
-        } else if (simPhase === "swing") {
-          const ta = worldToArm(tgt.x, tgt.z);
-          const ik = ikAngles(ta.dist, block.userData.oy);
-          setSimPhase(
-            "lowerTo",
-            { s1: simPose.s1, s2: simPose.s2 },
-            { s1: ik.s1, s2: ik.s2 },
-            block,
-          );
-        } else if (simPhase === "lowerTo") {
-          block.position.set(tgt.x, block.userData.oy, tgt.z);
-          simHeld = null;
-          setSimPhase("release", { clw: clawSpread }, { clw: 0.14 }, block);
-        } else if (simPhase === "release") {
-          setSimPhase(
-            "retract",
-            { s1: simPose.s1, s2: simPose.s2 },
-            { s1: 0.25, s2: -0.45 },
-            block,
-          );
-        } else if (simPhase === "retract") {
-          const stepEl = document.getElementById(`step-${step.step}`);
-          if (stepEl) stepEl.classList.add("done");
-          simStepIdx++;
-          simPhase = "pause";
-          setTimeout(beginSimStep, 300);
-        }
-      }
-
-      function animateSim() {
-        requestAnimationFrame(animateSim);
-        const dt = 0.016;
-        simTime += dt;
-
-        if (simSorting && simPhase !== "idle" && simPhase !== "pause") {
-          simPhaseT = Math.min(1, simPhaseT + dt * 1.8);
-          const e = sm(simPhaseT);
-
-          if (simPFrom.base !== undefined && simPTo.base !== undefined)
-            simPose.base = lerp(simPFrom.base, simPTo.base, e);
-          if (simPFrom.s1 !== undefined && simPTo.s1 !== undefined)
-            simPose.s1 = lerp(simPFrom.s1, simPTo.s1, e);
-          if (simPFrom.s2 !== undefined && simPTo.s2 !== undefined)
-            simPose.s2 = lerp(simPFrom.s2, simPTo.s2, e);
-          if (simPFrom.clw !== undefined && simPTo.clw !== undefined)
-            setClawOpen(lerp(simPFrom.clw, simPTo.clw, e));
-
-          if (simPhaseT >= 1) advanceSimPhase();
-        }
-
-        turret.rotation.y = simPose.base;
-        seg1.rotation.x = -simPose.s1;
-        seg2.rotation.x = -simPose.s2;
-        // Keep claw fingers pointing straight down regardless of arm pose
-        wrist.rotation.x = simPose.s1 + simPose.s2;
-
-        if (simHeld) {
-          const gp = getGripWorld();
-          simHeld.position.set(gp.x, gp.y - CLAW_LEN - 0.1, gp.z);
-        }
-
-        simZones.forEach((z) => {
-          if (z.material && z.material.opacity !== undefined)
-            z.material.opacity = 0.12 + 0.04 * Math.sin(simTime * 3);
-        });
-
-        simLabels.forEach(lbl => {
-          const b = lbl.userData.block;
-          if (b) lbl.position.set(b.position.x, b.position.y + 1.0, b.position.z);
-        });
-
-        const ca = simTime * 0.06;
-        camera.position.set(Math.sin(ca) * 11, 10, Math.cos(ca) * 9);
-        camera.lookAt(0, 1, 0);
-
-        renderer.render(scene, camera);
-      }
-
-      // ============================================================
-      // INIT
-      // ============================================================
-
-      window.addEventListener("resize", () => {
-        if (renderer) {
-          const W = simCanvas.clientWidth,
-            H = simCanvas.clientHeight;
-          renderer.setSize(W, H);
-          camera.aspect = W / H;
-          camera.updateProjectionMatrix();
-        }
-      });
-
-      initSim();
-
-      async function maybeRestoreSession() {
-        const sid = new URLSearchParams(location.search).get("session");
-        if (!sid) return;
-
-        const banner = document.getElementById("sessionBanner");
-        const bannerLabel = document.getElementById("sessionBannerLabel");
-        banner.style.display = "flex";
-        const grid = document.querySelector(".grid");
-        grid.style.height = `calc(100vh - 49px - ${banner.offsetHeight}px)`;
-
-        try {
-          const s = await fetch(`${API}/api/sessions/${sid}`).then(r => r.json());
-
-          if (s.error) {
-            bannerLabel.textContent = `Session ${sid} not found`;
-            return;
-          }
-          if (!s.plan) {
-            bannerLabel.textContent = `Session ${sid} — detection only, no plan recorded`;
-            return;
-          }
-
-          workspaceData = s.workspace;
-          planData = s.plan;
-
-          updateSimWorkspace(workspaceData);
-          renderSteps(planData);
-          addStepLabels();
-
-          const nf = makePlanNumFn(planData);
-          if (s.image_original) {
-            try {
-              const blob = await fetch(s.image_original).then(r => r.blob());
-              const dataUrl = await new Promise(res => {
-                const reader = new FileReader();
-                reader.onload = e => res(e.target.result);
-                reader.readAsDataURL(blob);
-              });
-              sourceImage = dataUrl;
-              drawAnnotations(dataUrl, workspaceData, nf);
-            } catch (_) {}
-          }
-          renderTagStrip(workspaceData.workspace, nf);
-
-          document.getElementById("btnExec").disabled = false;
-          document.getElementById("planStatus").textContent =
-            `${planData.sequence.length} steps — ${planData.strategy || ""}`;
-
-          bannerLabel.textContent = `Viewing saved session ${sid} — read-only replay`;
-        } catch (err) {
-          bannerLabel.textContent = `Failed to load session ${sid}: ${err.message}`;
-        }
-      }
-      maybeRestoreSession();
-    </script>
+    <script src="/static/js/camera.js"></script>
+    <script src="/static/js/detection.js"></script>
+    <script src="/static/js/planning.js"></script>
+    <script src="/static/js/simulation.js"></script>
+    <script src="/static/js/overlay.js"></script>
   </body>
 </html>
