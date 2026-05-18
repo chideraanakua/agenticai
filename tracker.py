@@ -120,7 +120,10 @@ class HumanZoneTracker:
             return
 
         try:
-            base_opts = _mp_python.BaseOptions(model_asset_path=_MODEL_PATH)
+            base_opts = _mp_python.BaseOptions(
+                model_asset_path=_MODEL_PATH,
+                delegate=_mp_python.BaseOptions.Delegate.CPU,
+            )
             options = _mp_vision.PoseLandmarkerOptions(
                 base_options=base_opts,
                 running_mode=_mp_vision.RunningMode.VIDEO,
