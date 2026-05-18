@@ -158,6 +158,7 @@ PYTHONPATH=. python tests/test_enforce_safety.py
 | `/api/sessions/{id}`  | GET    | Single session detail                                |
 | `/api/feedback/{id}`  | POST   | Submit user rating (1–5) + comment                  |
 | `/api/evaluate`       | POST   | Run evaluator agent on current plan                  |
+| `/api/calibration`    | GET    | Evaluator calibration stats (MAE, bias, per-session) |
 | `/api/stats`          | GET    | Aggregate analytics                                  |
 
 ---
