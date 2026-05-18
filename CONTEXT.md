@@ -73,6 +73,16 @@ Camera / Upload
 
 ## Changelog
 
+### 2026-05-17 — Evaluator calibration, similarity-ranked few-shot, loop closure
+
+- **Feat: evaluator calibration dashboard card (`core/storage.py`, `server.py`, `static/dashboard.html`)** — `get_calibration_stats()` returns per-session predicted vs actual deltas, MAE, and bias. `GET /api/calibration` endpoint added. Dashboard shows a calibration card (hidden until ≥1 session has both eval_score and human rating) with MAE, bias (over/under-predicts label), sample count, and a per-session delta table. All metrics and column headers have hover tooltips for first-time viewers.
+
+- **Feat: similarity-ranked few-shot retrieval (`core/gemini_agents.py`)** — `_score_similarity()` scores past sessions against the current workspace using category Jaccard similarity (60%), object count difference (30%), and zone count difference (10%). Past sessions are sorted by this score before being passed to `_build_few_shot_context()` in both `plan_sorting()` and `evaluate_plan()`, so the most scene-relevant examples are always at the top of the prompt.
+
+- **Fix: auto-evaluated sessions mis-classified in few-shot context (`core/gemini_agents.py`)** — `_build_few_shot_context()` was filtering with `s.get("rating", 0)`, which returned 0 for sessions with no human rating, mis-classifying them as BAD. Replaced with `_eff_rating()` helper that falls back through `effective_rating` → `eval_score` with a neutral default of 3.
+
+- **Fix: evaluator→planner loop closed (`core/storage.py`, `core/gemini_agents.py`)** — `get_rated_sessions()` now uses `COALESCE(rating, ROUND(eval_score)) AS effective_rating` so every evaluated session (not just manually rated ones) contributes to the few-shot pool. `_build_few_shot_context()` marks these as `(auto-evaluated)` vs `(human-rated)`.
+
 ### 2026-05-17 — Few-shot learning loop, evaluator agent, category-aware relocation
 
 - **Fix: detected object numbers now sync with sorting plan (`static/index.html`)** — after plan generation, the detected objects canvas and tag strip are redrawn using plan step numbers (instead of detection order). Skipped objects get a grey dashed bounding box and strikethrough in the tag strip. Before plan generation, detection order is used as before.
