@@ -44,10 +44,11 @@ python cli/feed_photo.py photo.jpg
 3. Human zones get special treatment via skin-tone detection (`_refine_human_zone()`) and safety polygon generation (`_make_safety_polygon()`)
 
 **Agent 2 — Sorting Planner:**
-1. Rated past sessions are fetched from SQLite and injected as few-shot examples into the planning prompt (`_build_few_shot_context()`) — good plans show what to replicate, bad plans + comments show what to avoid
-2. Gemini takes the workspace JSON + few-shot context and generates an optimal pick-and-place sequence grouped by category (temperature=0.4 when examples present, 0.0 otherwise)
-3. `_enforce_safety()` runs a hard-constraint pass: destinations must be outside safety zones, carry paths must not cross them. Category-aware relocation sorts candidates by proximity to same-category placements already made
-4. `_heuristic_plan()` is the fallback if Gemini times out
+1. Past sessions with ratings or eval scores are fetched from SQLite and similarity-ranked against the current scene via `_score_similarity()` (category Jaccard 60%, object count 30%, zone count 10%)
+2. `_build_few_shot_context()` formats the top matches as compact examples (good/bad/mediocre) injected into the prompt — good plans show what to replicate, bad plans + user comment + AI critique show what to avoid
+3. Gemini takes the workspace JSON + few-shot context and generates an optimal pick-and-place sequence grouped by category (temperature=0.4 when examples present, 0.0 otherwise)
+4. `_enforce_safety()` runs a hard-constraint pass: destinations must be outside safety zones, carry paths must not cross them. Category-aware relocation sorts candidates by proximity to same-category placements already made
+5. `_heuristic_plan()` is the fallback if Gemini times out
 
 **Evaluator Agent:**
 After planning, `evaluate_plan()` makes a separate Gemini call that critiques the plan against past rated examples and returns a predicted score (1–5), a one-sentence critique, and 2–3 suggestions. Result is stored to the session DB and displayed as an "AI Review" card in the UI.
@@ -66,6 +67,7 @@ FastAPI serves both the static frontend and the REST API. Key endpoints:
 | `GET /api/sessions` | Lists all sessions (paginated, max 100) |
 | `POST /api/feedback/{id}` | Submits user rating (1–5) + comment |
 | `POST /api/evaluate` | Runs evaluator agent on current plan; stores + returns predicted score/critique |
+| `GET /api/calibration` | Returns per-session predicted vs actual deltas + MAE + bias |
 | `GET /api/stats` | Aggregate analytics |
 | `WS /ws/unity` | Legacy WebSocket — kept for backward compat, not actively used |
 
@@ -77,7 +79,7 @@ SQLite (`sessions.db`) stores sessions with: workspace JSON, plan JSON, object/z
 
 `index.html` is a 4-panel browser demo: workspace input → annotated canvas → step-by-step plan → Three.js 3D robot arm simulation. All backend communication is `fetch`-based.
 
-`dashboard.html` shows session history, per-session detail modals, a rating interface, and a Chart.js rating trend graph.
+`dashboard.html` shows session history, per-session detail modals, a rating interface, a Chart.js rating trend graph, and an evaluator calibration card (MAE, bias, per-session delta table with tooltips).
 
 ## Key Data Shapes
 
