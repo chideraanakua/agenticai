@@ -260,6 +260,7 @@ function initWebSocket() {
       }
       planData = data.plan;
       renderSteps(planData);
+      addStepLabels();
       document.getElementById("planStatus").textContent =
         `${planData.sequence.length} steps — replanned`;
       _setTrackingBadge("● tracking", "var(--green)");
