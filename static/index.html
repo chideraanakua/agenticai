@@ -883,15 +883,36 @@
           </div>
         </div>
         <div class="bottom-bar">
-          <button
-            class="btn btn-primary"
-            id="btnCamera"
-            onclick="toggleCamera()"
-            data-tip-pos="up"
-            data-tip="Turn on your camera to show the AI your workspace"
-          >
-            Start camera
-          </button>
+          <div style="position:relative;display:inline-block">
+            <button
+              class="btn btn-primary"
+              id="btnCamera"
+              onclick="toggleCameraMenu(event)"
+              data-tip-pos="up"
+              data-tip="Choose between live video or single photo capture"
+            >
+              Start camera
+            </button>
+            <div id="cameraMenu" style="
+              display:none; position:absolute; bottom:calc(100% + 6px); left:0;
+              background:#1a1d27; border:1px solid #2a2d3a; border-radius:8px;
+              overflow:hidden; min-width:150px; z-index:100; box-shadow:0 4px 16px rgba(0,0,0,0.5)
+            ">
+              <button onclick="startCameraMode('photo')" style="
+                display:block; width:100%; text-align:left; padding:9px 14px;
+                background:none; border:none; color:#e2e8f0; font-size:13px; cursor:pointer;
+              " onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='none'">
+                📷 Click photo
+              </button>
+              <button onclick="startCameraMode('video')" style="
+                display:block; width:100%; text-align:left; padding:9px 14px;
+                background:none; border:none; color:#e2e8f0; font-size:13px; cursor:pointer;
+                border-top:1px solid #2a2d3a;
+              " onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='none'">
+                🎥 Capture video
+              </button>
+            </div>
+          </div>
           <button
             class="btn btn-primary"
             id="btnScan"
@@ -905,16 +926,16 @@
           <button
             class="btn btn-outline btn-sm"
             id="btnUpload"
-            onclick="uploadImage()"
+            onclick="uploadFile()"
             data-tip-pos="up"
-            data-tip="Use a saved photo instead of your camera"
+            data-tip="Upload a photo or video file"
           >
-            Upload photo
+            Upload
           </button>
           <input
             type="file"
             id="fileInput"
-            accept="image/*"
+            accept="image/*,video/*"
             style="display: none"
             onchange="handleUpload(event)"
           />
@@ -1064,54 +1085,109 @@
       // CAMERA
       // ============================================================
 
-      async function toggleCamera() {
+      function toggleCameraMenu(e) {
+        if (stream) { stopCamera(); return; }
+        const menu = document.getElementById("cameraMenu");
+        menu.style.display = menu.style.display === "none" ? "block" : "none";
+        e.stopPropagation();
+      }
+
+      document.addEventListener("click", () => {
+        const menu = document.getElementById("cameraMenu");
+        if (menu) menu.style.display = "none";
+      });
+
+      function stopCamera() {
         const btn = document.getElementById("btnCamera");
         const video = document.getElementById("camera-feed");
         const overlay = document.getElementById("cameraOverlay");
+        stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+        video.srcObject = null;
+        btn.textContent = "Start camera";
+        isVideoMode = false;
+        document.getElementById("btnScan").disabled = true;
+        document.getElementById("btnScan").textContent = "Scan workspace";
+        document.getElementById("btnPlan").style.display = "";
+        overlay.classList.remove("hidden");
+        stopFrameLoop();
+      }
 
-        if (stream) {
-          stream.getTracks().forEach((t) => t.stop());
-          stream = null;
-          video.srcObject = null;
-          btn.textContent = "Start camera";
-          isVideoMode = false;
-          document.getElementById("btnScan").disabled = true;
-          document.getElementById("btnPlan").style.display = "";
-          overlay.classList.remove("hidden");
-          stopFrameLoop();
-          return;
-        }
-
+      async function startCameraMode(mode) {
+        document.getElementById("cameraMenu").style.display = "none";
+        const btn = document.getElementById("btnCamera");
+        const video = document.getElementById("camera-feed");
+        const overlay = document.getElementById("cameraOverlay");
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: "environment",
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
+            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
           });
           video.srcObject = stream;
           btn.textContent = "Stop camera";
-          isVideoMode = true;
-          document.getElementById("btnScan").disabled = false;
-          document.getElementById("btnPlan").style.display = "none";
           overlay.classList.add("hidden");
-          startFrameLoop();
-          setTimeout(() => scanWorkspace(), 800);
+          if (mode === "video") {
+            isVideoMode = true;
+            document.getElementById("btnPlan").style.display = "none";
+            document.getElementById("btnScan").disabled = true;
+            document.getElementById("btnScan").textContent = "Scan workspace";
+            document.getElementById("btnExec").disabled = true;
+            startFrameLoop();
+            const triggerScan = () => {
+              if ('requestVideoFrameCallback' in video) {
+                video.requestVideoFrameCallback(() => scanWorkspace());
+              } else {
+                setTimeout(() => scanWorkspace(), 300);
+              }
+            };
+            video.addEventListener('playing', triggerScan, { once: true });
+          } else {
+            isVideoMode = false;
+            document.getElementById("btnPlan").style.display = "";
+            document.getElementById("btnScan").disabled = false;
+            document.getElementById("btnScan").textContent = "Take photo";
+          }
         } catch (e) {
-          const overlay = document.getElementById("cameraOverlay");
           overlay.classList.remove("hidden");
-          overlay.innerHTML = `<div style="color:var(--red);font-size:13px">Camera access denied</div><div style="color:var(--muted);font-size:11px;margin-top:4px">Use "Upload photo" instead</div>`;
+          overlay.innerHTML = `<div style="color:var(--red);font-size:13px">Camera access denied</div><div style="color:var(--muted);font-size:11px;margin-top:4px">Use "Upload" instead</div>`;
         }
       }
 
-      function uploadImage() {
+      function uploadFile() {
         document.getElementById("fileInput").click();
       }
 
       function handleUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
+
+        if (file.type.startsWith("video/")) {
+          // For video files: load into video element, capture first frame
+          const url = URL.createObjectURL(file);
+          const vid = document.getElementById("camera-feed");
+          const overlay = document.getElementById("cameraOverlay");
+          isVideoMode = true;
+          document.getElementById("btnPlan").style.display = "none";
+          document.getElementById("btnScan").disabled = true;
+          document.getElementById("btnExec").disabled = true;
+          vid.src = url;
+          vid.muted = true;
+          vid.style.display = "block";
+          document.getElementById("snapshot-img").style.display = "none";
+          overlay.classList.add("hidden");
+          vid.addEventListener("loadeddata", function captureFirstFrame() {
+            vid.removeEventListener("loadeddata", captureFirstFrame);
+            const canvas = document.createElement("canvas");
+            canvas.width = vid.videoWidth;
+            canvas.height = vid.videoHeight;
+            canvas.getContext("2d").drawImage(vid, 0, 0);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+            sourceImage = dataUrl;
+            startFrameLoop();
+            runDetection(dataUrl);
+          });
+          vid.load();
+          return;
+        }
 
         const reader = new FileReader();
         reader.onload = function (e) {
@@ -1132,6 +1208,7 @@
 
       async function scanWorkspace() {
         const video = document.getElementById("camera-feed");
+        if (video.videoWidth === 0) return;
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -1179,7 +1256,7 @@
 
           document.getElementById("objCount").textContent =
             `${objs.length} objects, ${zones.length} zones`;
-          document.getElementById("btnPlan").disabled = false;
+          if (!isVideoMode) document.getElementById("btnPlan").disabled = false;
           document.getElementById("planStatus").textContent =
             `${objs.length} object${objs.length !== 1 ? "s" : ""} detected — ready to plan`;
           document.getElementById("planStatus").style.color = "var(--green)";
@@ -1213,7 +1290,7 @@
 
         stopLogPolling();
         loader.classList.remove("active");
-        document.getElementById("btnScan").disabled = !stream;
+        document.getElementById("btnScan").disabled = isVideoMode || !stream;
         if (isVideoMode && workspaceData) generatePlan();
       }
 
@@ -1419,7 +1496,7 @@
             drawAnnotations(sourceImage, workspaceData, nf);
             renderTagStrip(workspaceData.workspace, nf);
           }
-          document.getElementById("btnExec").disabled = false;
+          if (!isVideoMode) document.getElementById("btnExec").disabled = false;
           document.getElementById("planStatus").textContent =
             `${planData.sequence.length} steps — ${planData.strategy || ""}`;
 
@@ -1433,7 +1510,7 @@
 
         stopLogPolling();
         loader.classList.remove("active");
-        document.getElementById("btnPlan").disabled = false;
+        if (!isVideoMode) document.getElementById("btnPlan").disabled = false;
       }
 
       async function runEvaluator() {

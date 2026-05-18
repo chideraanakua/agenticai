@@ -306,6 +306,7 @@ def detect_objects_hybrid(image_source, status_callback=None):
             print(f"[DETECT] {msg}")
 
     status("Loading image...")
+    img_pil = None
     if isinstance(image_source, str) and os.path.isfile(image_source):
         img_cv = cv2.imread(image_source)
         img_pil = Image.open(image_source)
@@ -317,10 +318,12 @@ def detect_objects_hybrid(image_source, status_callback=None):
             raw = base64.b64decode(raw)
         img_array = np.frombuffer(raw, dtype=np.uint8)
         img_cv = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        img_pil = Image.open(BytesIO(raw))
 
     if img_cv is None:
         raise ValueError("Could not decode image")
+
+    if img_pil is None:
+        img_pil = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
 
     h, w = img_cv.shape[:2]
 
