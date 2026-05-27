@@ -22,6 +22,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 import uvicorn
 
 from core.gemini_agents import (
@@ -37,6 +40,28 @@ from core import storage as db
 db.init_db()
 
 app = FastAPI(title="SafeArc Pipeline")
+
+def _client_ip(request: Request) -> str:
+    """Real client IP, honoring X-Forwarded-For when behind ngrok / a reverse proxy."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=_client_ip)
+app.state.limiter = limiter
+
+
+def _friendly_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        {"error": "Too many scans — please wait an hour or run locally. See the README for setup."},
+        status_code=429,
+        headers={"Retry-After": "3600"},
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _friendly_rate_limit_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -217,6 +242,7 @@ async def serve_demo():
 # ============================================================
 
 @app.post("/api/detect")
+@limiter.limit("10/hour")
 async def detect_endpoint(request: Request):
     global current_workspace, current_session_id
 
