@@ -5,6 +5,18 @@ Track 3: Robotics & Simulation
 
 An AI-orchestrated pipeline that turns workspace chaos into collision-free robotic sorting — validated in a digital twin before a single motor moves.
 
+## Demo
+
+*Detection running on a live camera feed — human presence 
+detected, safety zones enforced, unsafe steps skipped automatically.*
+
+![SafeArc detecting](samples/Photos/detecting.gif)
+
+*Desktop view of the complete pipeline*
+
+<img src="samples/Photos/safe-arc.png" width="100%" 
+alt="SafeArc full pipeline — 4 panel view"/>
+
 Demo Link: https://turtle-superb-lovely.ngrok-free.app/
 
 > ⚠️ The demo URL is hosted on a personal server and may have intermittent availability. The `/api/detect` endpoint is rate-limited to 10 requests per IP per hour. If the link is down, follow the [Installation](#installation) steps to run locally.
