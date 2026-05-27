@@ -7,6 +7,8 @@ An AI-orchestrated pipeline that turns workspace chaos into collision-free robot
 
 Demo Link: https://turtle-superb-lovely.ngrok-free.app/
 
+> ⚠️ The demo URL is hosted on a personal server and may have intermittent availability. The `/api/detect` endpoint is rate-limited to 10 requests per IP per hour. If the link is down, follow the [Installation](#installation) steps to run locally.
+
 ---
 
 ## What it does
