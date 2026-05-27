@@ -105,6 +105,12 @@ async function runDetection(imageDataUrl) {
   } catch (e) {
     document.getElementById("objCount").textContent = "error";
     document.getElementById("objCount").style.color = "var(--red)";
+    const banner = document.getElementById("errorBanner");
+    const bannerLabel = document.getElementById("errorBannerLabel");
+    if (banner && bannerLabel) {
+      bannerLabel.textContent = e.message;
+      banner.style.display = "flex";
+    }
     console.error("Detection error:", e.message);
   }
 
