@@ -163,31 +163,73 @@ Respond ONLY with valid JSON, no markdown fences, no explanation:
 }"""
 
 
+def _normalize_bbox(raw_bbox: dict) -> dict | None:
+    """
+    Normalize a Gemini-returned bbox to a {x_min, y_min, x_max, y_max} dict
+    with all values in [0, 1]. Handles the 0-1000 convention some Gemini
+    models use, reversed corners, and out-of-range values. Returns None
+    if the bbox is unusable.
+    """
+    if not raw_bbox:
+        return None
+    try:
+        x_min = float(raw_bbox.get("x_min", 0))
+        y_min = float(raw_bbox.get("y_min", 0))
+        x_max = float(raw_bbox.get("x_max", 1))
+        y_max = float(raw_bbox.get("y_max", 1))
+    except (TypeError, ValueError):
+        return None
+
+    # 0-1000 convention: if any value clearly exceeds 1, scale down
+    if max(abs(x_min), abs(y_min), abs(x_max), abs(y_max)) > 1.5:
+        x_min /= 1000.0
+        y_min /= 1000.0
+        x_max /= 1000.0
+        y_max /= 1000.0
+
+    if x_min > x_max:
+        x_min, x_max = x_max, x_min
+    if y_min > y_max:
+        y_min, y_max = y_max, y_min
+
+    x_min = max(0.0, min(1.0, x_min))
+    y_min = max(0.0, min(1.0, y_min))
+    x_max = max(0.0, min(1.0, x_max))
+    y_max = max(0.0, min(1.0, y_max))
+
+    if x_max - x_min < 0.001 or y_max - y_min < 0.001:
+        return None
+
+    return {"x_min": x_min, "y_min": y_min, "x_max": x_max, "y_max": y_max}
+
+
 def _refine_bbox_with_opencv(img, rough_bbox, padding_ratio=0.15):
     """
     Takes a rough bounding box from Gemini and refines it using
     OpenCV edge detection to snap to the actual object contour.
     """
     h, w = img.shape[:2]
-    x_min = rough_bbox.get("x_min", 0)
-    y_min = rough_bbox.get("y_min", 0)
-    x_max = rough_bbox.get("x_max", 1)
-    y_max = rough_bbox.get("y_max", 1)
+    x_min = float(rough_bbox.get("x_min", 0))
+    y_min = float(rough_bbox.get("y_min", 0))
+    x_max = float(rough_bbox.get("x_max", 1))
+    y_max = float(rough_bbox.get("y_max", 1))
 
     box_w = x_max - x_min
     box_h = y_max - y_min
     pad_x = box_w * padding_ratio
     pad_y = box_h * padding_ratio
 
-    search_x1 = int(max(0, (x_min - pad_x)) * w)
-    search_y1 = int(max(0, (y_min - pad_y)) * h)
-    search_x2 = int(min(1, (x_max + pad_x)) * w)
-    search_y2 = int(min(1, (y_max + pad_y)) * h)
+    search_x1 = max(0, min(w, int((x_min - pad_x) * w)))
+    search_y1 = max(0, min(h, int((y_min - pad_y) * h)))
+    search_x2 = max(0, min(w, int((x_max + pad_x) * w)))
+    search_y2 = max(0, min(h, int((y_max + pad_y) * h)))
 
     if search_x2 - search_x1 < 10 or search_y2 - search_y1 < 10:
         return rough_bbox, 0.0
 
     crop = img[search_y1:search_y2, search_x1:search_x2]
+    if crop.size == 0:
+        return rough_bbox, 0.0
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     edges = cv2.Canny(blurred, 30, 100)
@@ -232,21 +274,32 @@ def _refine_bbox_with_opencv(img, rough_bbox, padding_ratio=0.15):
 def _refine_human_zone(img, rough_bbox, margin=0.05):
     """Refines human detection with skin-tone + edge detection."""
     h, w = img.shape[:2]
-    x_min = rough_bbox.get("x_min", 0)
-    y_min = rough_bbox.get("y_min", 0)
-    x_max = rough_bbox.get("x_max", 1)
-    y_max = rough_bbox.get("y_max", 1)
+    x_min = float(rough_bbox.get("x_min", 0))
+    y_min = float(rough_bbox.get("y_min", 0))
+    x_max = float(rough_bbox.get("x_max", 1))
+    y_max = float(rough_bbox.get("y_max", 1))
+
+    if x_min > x_max:
+        x_min, x_max = x_max, x_min
+    if y_min > y_max:
+        y_min, y_max = y_max, y_min
+    x_min = max(0.0, min(1.0, x_min))
+    y_min = max(0.0, min(1.0, y_min))
+    x_max = max(0.0, min(1.0, x_max))
+    y_max = max(0.0, min(1.0, y_max))
 
     pad = 0.05
-    sx1 = int(max(0, x_min - pad) * w)
-    sy1 = int(max(0, y_min - pad) * h)
-    sx2 = int(min(1, x_max + pad) * w)
-    sy2 = int(min(1, y_max + pad) * h)
+    sx1 = max(0, min(w, int((x_min - pad) * w)))
+    sy1 = max(0, min(h, int((y_min - pad) * h)))
+    sx2 = max(0, min(w, int((x_max + pad) * w)))
+    sy2 = max(0, min(h, int((y_max + pad) * h)))
 
     if sx2 - sx1 < 10 or sy2 - sy1 < 10:
         return _make_safety_polygon(rough_bbox, margin)
 
     crop = img[sy1:sy2, sx1:sx2]
+    if crop.size == 0:
+        return _make_safety_polygon(rough_bbox, margin)
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
 
     skin1 = cv2.inRange(hsv, np.array([0, 30, 80]), np.array([20, 180, 255]))
@@ -354,7 +407,7 @@ def detect_objects_hybrid(image_source, status_callback=None):
     obj_counter = 1
 
     for raw_obj in raw_objects:
-        rough = raw_obj.get("bbox", {})
+        rough = _normalize_bbox(raw_obj.get("bbox"))
         if not rough:
             continue
 
@@ -405,7 +458,7 @@ def detect_objects_hybrid(image_source, status_callback=None):
     safety_zones = []
     zone_counter = 1
     for raw_human in raw_humans:
-        rough = raw_human.get("bbox", {})
+        rough = _normalize_bbox(raw_human.get("bbox"))
         if not rough:
             continue
         polygon = _refine_human_zone(img_cv, rough)

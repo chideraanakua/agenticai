@@ -239,7 +239,10 @@ async def detect_endpoint(request: Request):
 
         frame = _decode_frame_b64(image_data)
         if frame is not None:
-            _init_trackers(workspace, frame)
+            try:
+                _init_trackers(workspace, frame)
+            except Exception as track_err:
+                log(f"Tracker init failed: {track_err}", "warn")
 
         try:
             orig_url, ann_url = _save_session_images(current_session_id, image_data, workspace)

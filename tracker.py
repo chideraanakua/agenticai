@@ -69,7 +69,7 @@ class ObjectTracker:
         try:
             self._tracker = cv2.legacy.TrackerCSRT_create()
             self._tracker.init(frame, self._bbox)
-        except AttributeError:
+        except (AttributeError, cv2.error):
             self._tracker = None
             self.lost = True
 
@@ -215,8 +215,10 @@ def bbox_px_from_normalized(bbox_norm: dict, frame_w: int, frame_h: int) -> tupl
     """
     tl = bbox_norm["top_left"]
     br = bbox_norm["bottom_right"]
-    x1 = int(tl["x"] * frame_w)
-    y1 = int(tl["y"] * frame_h)
-    x2 = int(br["x"] * frame_w)
-    y2 = int(br["y"] * frame_h)
+    nx1, nx2 = sorted((float(tl["x"]), float(br["x"])))
+    ny1, ny2 = sorted((float(tl["y"]), float(br["y"])))
+    x1 = max(0, min(frame_w, int(nx1 * frame_w)))
+    y1 = max(0, min(frame_h, int(ny1 * frame_h)))
+    x2 = max(0, min(frame_w, int(nx2 * frame_w)))
+    y2 = max(0, min(frame_h, int(ny2 * frame_h)))
     return (x1, y1, x2 - x1, y2 - y1)
