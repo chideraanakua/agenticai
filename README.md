@@ -49,7 +49,6 @@ safearc/
 ├── tracker.py           # Frame-level tracking (CSRT + MediaPipe)
 ├── conftest.py          # pytest path setup
 ├── requirements.txt
-├── render.yaml          # Render.com deploy config
 ├── core/
 │   ├── gemini_agents.py # Agent 1 (hybrid detection) + Agent 2 (planner)
 │   └── storage.py       # SQLite session persistence + analytics
