@@ -1,13 +1,3 @@
-# Contributing to SafeArc
-
-Thanks for your interest in improving SafeArc — an adaptive spatial-sorting and
-safety engine for robotic pick-and-place. This guide covers how to set up a
-development environment, the conventions we follow, and how to get changes
-merged.
-
-By participating in this project you agree to abide by our
-[Code of Conduct](CODE_OF_CONDUCT.md).
-
 ## Getting started
 
 ### Prerequisites

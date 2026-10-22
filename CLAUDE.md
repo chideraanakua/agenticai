@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**SafeArc** — An adaptive spatial-sorting and safety engine for a TechEx Hackathon (Track 3: Robotics & Simulation). It uses a two-agent Gemini pipeline for object detection and pick-and-place planning, with a browser-based 3D simulation frontend.
+An adaptive spatial-sorting and safety engine (Robotics & Simulation). It uses a two-agent Gemini pipeline for object detection and pick-and-place planning, with a browser-based 3D simulation frontend.
 
 ## Running Locally
 
@@ -14,7 +14,7 @@ pip install -r requirements.txt
 
 # Set required env vars (or put in .env)
 export GEMINI_API_KEY="your-key"             # Required — get free key at aistudio.google.com/apikey
-export GEMINI_MODEL="gemini-2.5-flash-lite"  # Optional — this is the default
+export GEMINI_MODEL="gemini-3.5-flash-lite"  # Optional — this is the default
 
 # Start server
 python server.py

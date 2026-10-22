@@ -14,7 +14,7 @@ The input is not limited to a table scene — the system works on any image (war
 | --------------- | ---------------------------------------------------------------------------------------------------- |
 | Backend         | Python 3.10+, FastAPI, Uvicorn                                                                       |
 | AI SDK          | `google-genai` (`genai.Client`) — **not** the deprecated `google-generativeai`                       |
-| AI Model        | `gemini-2.5-flash-lite` (default; override via `GEMINI_MODEL` env var)                               |
+| AI Model        | `gemini-3.5-flash-lite` (default; override via `GEMINI_MODEL` env var)                               |
 | Computer Vision | OpenCV 4.13 (CSRT tracking, contour refinement), MediaPipe Pose (human zone tracking), Pillow, NumPy |
 | Database        | SQLite (`sessions.db`)                                                                               |
 | Frontend        | Vanilla JS + Three.js (3D sim) + Chart.js (dashboard)                                                |
@@ -116,7 +116,7 @@ Camera live feed (5fps frame loop)
 - **Grace window after detection** — `last_replan_time` is set to `time.time()` in `_init_trackers()`, not 0.0, so the first tracking frame cannot trigger an immediate replan.
 - **Retry on quota errors** — `_gemini_with_retry()` retries both agents up to 3× with 5→15→30s backoff; heuristic fallback fires if all retries exhaust.
 - **Compact planning JSON** — workspace sent to Agent 2 uses `separators=(',',':')` and 2dp coordinates (~35% token reduction vs original).
-- **GEMINI_MODEL env var** — defaults to `gemini-2.5-flash-lite`; swap to `gemini-2.0-flash-lite` for higher free-tier rate limits during testing.
+- **GEMINI_MODEL env var** — defaults to `gemini-3.5-flash-lite`; swap to `gemini-2.0-flash-lite` for higher free-tier rate limits during testing.
 
 ## Changelog
 
@@ -157,7 +157,7 @@ Camera live feed (5fps frame loop)
 
 - **Refactor: SDK migration (`core/gemini_agents.py`)** — migrated from deprecated `google-generativeai` to `google-genai`. Client is now `genai.Client(api_key=...)`, calls use `client.models.generate_content(model=..., contents=[...], config=types.GenerateContentConfig(...))`. Both Agent 1 and Agent 2 calls wrapped with `_gemini_with_retry()` from video-support branch. `requirements.txt` updated (`google-generativeai` → `google-genai`).
 
-- **Config: model pinned to `gemini-2.5-flash-lite`** — default in `core/gemini_agents.py`, `.env`, and `README.md`. Previously was `gemini-2.5-flash`.
+- **Config: model pinned to `gemini-3.5-flash-lite`** — default in `core/gemini_agents.py`, `.env`, and `README.md`. Previously was `gemini-2.5-flash`.
 
 - **Feat: Three.js step-number labels (`static/index.html`)** — each object block in the 3D sim now shows a circular badge with its plan step number, rendered via `CanvasTexture` sprites. Labels track blocks during animation. Skipped objects get a badge too (step number from plan).
 
@@ -210,7 +210,7 @@ Camera live feed (5fps frame loop)
 
 - **Bug fix:** `_enforce_safety()` now deduplicates destinations — a candidate placement is rejected if another object was already relocated within 0.08 normalized units of it, preventing objects from being stacked at the same spot.
 - **Bug fix:** Safety enforcement (`_enforce_safety()`) was skipped when Gemini succeeded — it only ran on the heuristic fallback path. Fixed so it always runs.
-- **Bug fix:** `GEMINI_MODEL` had no default; crashes if env var missing. Now defaults to a pinned model (later changed to `gemini-2.5-flash-lite`).
+- **Bug fix:** `GEMINI_MODEL` had no default; crashes if env var missing. Now defaults to a pinned model (later changed to `gemini-3.5-flash-lite`).
 - **Fix:** Confidence scores were hardcoded to 0.92/0.78. Now derived from OpenCV `coverage` ratio — varies per object.
 - **Fix:** Detection prompt was scoped to "table/desk". Generalized to any workspace scene, movable objects only.
 - **Fix:** `alert()` popups on errors replaced with inline red status text in each panel.

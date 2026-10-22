@@ -44,7 +44,7 @@ MIN_AREA_RATIO = 0.005
 SAFETY_MARGIN = 0.06
 
 # Gemini model — flash is fast and cheap, plenty for this
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash"
 
 
 # ============================================================
@@ -310,7 +310,7 @@ def draw_preview(img, workspace_data):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Safearc — Gemini-powered workspace detection"
+        description=" Gemini-powered workspace detection"
     )
     parser.add_argument("image", help="Path to overhead workspace photo")
     parser.add_argument("-o", "--output", help="Save JSON to file")
@@ -353,8 +353,8 @@ def main():
             print(f"Saved preview → {args.save_preview}")
 
         if args.preview:
-            cv2.namedWindow("Safearc — Gemini Detection", cv2.WINDOW_NORMAL)
-            cv2.imshow("Safearc — Gemini Detection", preview)
+            cv2.namedWindow(" Gemini Detection", cv2.WINDOW_NORMAL)
+            cv2.imshow("Gemini Detection", preview)
             print("\nPress any key to close preview...")
             cv2.waitKey(0)
             cv2.destroyAllWindows()

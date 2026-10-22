@@ -1,5 +1,5 @@
 """
-storage.py — SQLite session store for Safearc
+storage.py — SQLite session store
 Persists detect+plan sessions and user feedback ratings.
 """
 

@@ -1,5 +1,5 @@
 """
-gemini_agents.py — Safearc AI Agents
+gemini_agents.py — AI Agents
 
 Agent 1 (Hybrid Detection):
     Gemini sees the full image → returns object names + rough bounding boxes
@@ -32,7 +32,7 @@ from io import BytesIO
 from dotenv import load_dotenv
 load_dotenv()
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 _client = None
 
 _RETRY_DELAYS = [5, 15, 30]  # seconds between retries on rate-limit

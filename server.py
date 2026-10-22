@@ -1,5 +1,5 @@
 """
-server.py — SafeArc Pipeline Server
+server.py — Pipeline Server
 
 Serves the browser demo and runs hybrid detection + planning.
 
@@ -39,7 +39,7 @@ from core import storage as db
 
 db.init_db()
 
-app = FastAPI(title="SafeArc Pipeline")
+app = FastAPI(title="Pipeline")
 
 def _client_ip(request: Request) -> str:
     """Real client IP, honoring X-Forwarded-For when behind ngrok / a reverse proxy."""
@@ -234,7 +234,7 @@ async def serve_demo():
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return HTMLResponse("<h1>SafeArc</h1><p>Place index.html in static/ folder</p>")
+    return HTMLResponse("<p>Place index.html in static/ folder</p>")
 
 
 # ============================================================
