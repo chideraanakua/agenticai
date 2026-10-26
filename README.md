@@ -1,4 +1,4 @@
-# SafeArc
+# agentai
 
 **Adaptive Spatial-Sorting & Safety Engine**
 Track 3: Robotics & Simulation
@@ -10,12 +10,12 @@ An AI-orchestrated pipeline that turns workspace chaos into collision-free robot
 *Detection running on a live camera feed — human presence 
 detected, safety zones enforced, unsafe steps skipped automatically.*
 
-![SafeArc detecting](samples/Photos/detecting.gif)
+![agentai detecting](samples/Photos/detecting.gif)
 
 *Desktop view of the complete pipeline*
 
 <img src="samples/Photos/safe-arc.png" width="100%" 
-alt="SafeArc full pipeline — 4 panel view"/>
+alt="agentai full pipeline — 4 panel view"/>
 
 Demo Link: https://turtle-superb-lovely.ngrok-free.app/
 
@@ -25,7 +25,7 @@ Demo Link: https://turtle-superb-lovely.ngrok-free.app/
 
 ## What it does
 
-Point a camera at a messy table. SafeArc identifies every object, plans the optimal sorting sequence, enforces human safety zones, and executes the plan in a real-time 3D simulation — all in under 10 seconds.
+Point a camera at a messy table. agentai identifies every object, plans the optimal sorting sequence, enforces human safety zones, and executes the plan in a real-time 3D simulation — all in under 10 seconds.
 
 ```
 Camera → Agent 1 (Gemini + OpenCV) → Agent 2 (Gemini) → Robot Arm Simulation
@@ -58,7 +58,7 @@ Every session is stored in SQLite with operator ratings and AI evaluator scores.
 ## Project structure
 
 ```
-safearc/
+agentai/
 ├── server.py            # FastAPI backend — serves everything
 ├── tracker.py           # Frame-level tracking (CSRT + MediaPipe)
 ├── conftest.py          # pytest path setup
@@ -104,8 +104,8 @@ safearc/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/srikeerthis/safearc
-cd safearc
+git clone https://github.com/srikeerthis/agentai
+cd agentai
 ```
 
 ### 2. Install Python dependencies
@@ -320,5 +320,5 @@ pip install opencv-python-headless
 
 ## Team
 
-**SafeArc** — the robot arm that thinks before it moves.
+**agentai** — the robot arm that thinks before it moves.
 Built for TechEx Hackathon — Track 3: Robotics & Simulation.

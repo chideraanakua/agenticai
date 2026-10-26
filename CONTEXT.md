@@ -1,10 +1,10 @@
 # CONTEXT.md
 
-This file tracks the current state of SafeArc — what's implemented, design decisions made, and what changed over time. For how to run and develop in this repo, see CLAUDE.md.
+This file tracks the current state of agentai — what's implemented, design decisions made, and what changed over time. For how to run and develop in this repo, see CLAUDE.md.
 
 ## What It Is
 
-**Safearc** (repo: `safearc`) is an AI-orchestrated workspace sorting and collision-avoidance system built for TechEx Hackathon Track 3: Robotics & Simulation. Feed any overhead image into the pipeline → AI identifies objects and human-presence zones → planner generates a collision-free pick-and-place sequence → robot arm executes in a browser-based Three.js simulation. Full pipeline runs in under 10 seconds.
+**agentai** (repo: `agentai`) is an AI-orchestrated workspace sorting and collision-avoidance system built for TechEx Hackathon Track 3: Robotics & Simulation. Feed any overhead image into the pipeline → AI identifies objects and human-presence zones → planner generates a collision-free pick-and-place sequence → robot arm executes in a browser-based Three.js simulation. Full pipeline runs in under 10 seconds.
 
 The input is not limited to a table scene — the system works on any image (warehouse floor, lab bench, outdoor scene, etc.). The table is just the primary demo.
 
@@ -23,7 +23,7 @@ The input is not limited to a table scene — the system works on any image (war
 ## Project Structure
 
 ```
-safearc/
+agentai/
 ├── server.py                   # FastAPI app — API routes, session tracking, video pipeline
 ├── tracker.py                  # Frame-level tracking (CSRT objects, MediaPipe human zone)
 ├── conftest.py                 # pytest sys.path setup
