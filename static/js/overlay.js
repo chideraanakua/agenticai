@@ -199,21 +199,43 @@ function stopFrameLoop() {
   _clearLiveOverlay();
 }
 
+// Video loop only. Tracking uses the 320x240 frame; Gemini re-detection gets a
+// sharper 640x480 copy, sent once per HI_FRAME_EVERY frames (~1 s) to save bandwidth.
+// Both are the same full-frame stretch, so normalized coordinates line up.
+const HI_FRAME_EVERY = 5;
+let _hiCanvas = null, _frameCount = 0, _frameInFlight = false;
+
 async function sendVideoFrame() {
   const video = document.getElementById("camera-feed");
   if (!video || !video.videoWidth) return;
-  const ctx = _offscreenCanvas.getContext("2d");
-  ctx.drawImage(video, 0, 0, _offscreenCanvas.width, _offscreenCanvas.height);
-  const frame = _offscreenCanvas.toDataURL("image/jpeg", 0.6);
+  if (_frameInFlight) return;            // don't stack requests when the server is busy
+  _frameInFlight = true;
   try {
+    const ctx = _offscreenCanvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, _offscreenCanvas.width, _offscreenCanvas.height);
+    const payload = { frame: _offscreenCanvas.toDataURL("image/jpeg", 0.6) };
+
+    if (_frameCount++ % HI_FRAME_EVERY === 0) {
+      if (!_hiCanvas) {
+        _hiCanvas = document.createElement("canvas");
+        _hiCanvas.width = 640;
+        _hiCanvas.height = 480;
+      }
+      _hiCanvas.getContext("2d").drawImage(video, 0, 0, 640, 480);
+      payload.frame_hi = _hiCanvas.toDataURL("image/jpeg", 0.8);
+    }
+
     const resp = await fetch(`${API}/api/video/frame`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ frame }),
+      body: JSON.stringify(payload),
     });
     if (!resp.ok) return;
     handleFrameResponse(await resp.json());
-  } catch (_) {}
+  } catch (_) {
+  } finally {
+    _frameInFlight = false;
+  }
 }
 
 function handleFrameResponse(data) {

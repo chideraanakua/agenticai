@@ -13,6 +13,13 @@ let simPhase = "idle", simPhaseT = 0, simPFrom = {}, simPTo = {};
 let simPlan = [], simTime = 0;
 
 const ARM1_LEN = 2.2, ARM2_LEN = 1.8, CLAW_LEN = 0.5;
+const SHOULDER_Y = 0.45;        // turret (0.35) + seg1 (0.1), in arm-local units
+const CLAW_CLEARANCE = 0.1;     // a held block hangs this far below the claw tips
+const CARRY_Y = 1.4;            // world height of a carried block (clears the others)
+const MAX_ARM_SCALE = 2.8;
+let armScaleTarget = 1;         // arm is scaled up so it can actually reach the whole table
+let camAngle = 0;
+let CAM_ZOOM_K = 0.4, CAM_LOOK_K = 2.2;   // pull the camera back / aim higher as the arm grows
 
 function initSim() {
   const W = simCanvas.clientWidth, H = simCanvas.clientHeight;
@@ -141,16 +148,46 @@ function worldToArm(wx, wz) {
   return { angle: Math.atan2(dx, dz), dist: Math.sqrt(dx * dx + dz * dz) };
 }
 
+function nearAngle(a, ref) {
+  // same angle as a, but within +-PI of ref, so the base never spins the long way round
+  return ref + Math.atan2(Math.sin(a - ref), Math.cos(a - ref));
+}
+
+// Joint angles that put a block's centre at horizontal distance dist from the arm base
+// and height ty (world units) while it hangs from the claw.
+// Convention: s1 = upper arm lean from vertical, s2 = forearm bend relative to the upper
+// arm; both are positive when leaning toward the arm's forward direction (+z in turret space).
 function ikAngles(dist, ty) {
-  const L1 = ARM1_LEN, L2 = ARM2_LEN + CLAW_LEN * 1.1;
-  const y = Math.max(0.3, ty) - 0.35;
-  const r = Math.min(dist, L1 + L2 - 0.3);
-  const d = Math.sqrt(r * r + y * y);
-  const cA = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d))));
-  const bA = Math.atan2(y, r);
-  const s1 = Math.PI / 2 - (cA + bA);
-  const cB = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2))));
-  return { s1, s2: -(Math.PI - cB) };
+  const S = armScaleTarget;
+  const L1 = ARM1_LEN, L2 = ARM2_LEN;
+  let r = dist / S;
+  let y = ty / S + CLAW_LEN + CLAW_CLEARANCE - SHOULDER_Y;   // wrist height above the shoulder
+  let d = Math.hypot(r, y);
+  const dMax = L1 + L2 - 0.02, dMin = Math.abs(L1 - L2) + 0.15;
+  if (d > dMax) { r *= dMax / d; y *= dMax / d; d = dMax; }
+  else if (d < dMin) {
+    if (d < 1e-6) { r = dMin; y = 0; } else { r *= dMin / d; y *= dMin / d; }
+    d = dMin;
+  }
+  const alpha = Math.atan2(r, y);
+  const cB = Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)));
+  const s1 = alpha - Math.acos(cB);                           // elbow up
+  const ex = L1 * Math.sin(s1), ey = L1 * Math.cos(s1);
+  const s2 = Math.atan2(r - ex, y - ey) - s1;
+  return { s1, s2 };
+}
+
+// Scale the arm so the farthest pick/place point in the plan is within reach.
+function fitArmToPlan(plan) {
+  let far = 0;
+  for (const st of plan) {
+    if (st.skip) continue;
+    const blk = simBlocks.find((b) => b.userData.id === st.object_id);
+    if (!blk) continue;
+    const t = normToWorld(st.to.x, st.to.y);
+    far = Math.max(far, worldToArm(blk.position.x, blk.position.z).dist, worldToArm(t.x, t.z).dist);
+  }
+  armScaleTarget = Math.min(MAX_ARM_SCALE, Math.max(1, far / ((ARM1_LEN + ARM2_LEN) * 0.9)));
 }
 
 function getGripWorld() {
@@ -280,6 +317,7 @@ function executePlan() {
   const ph = document.getElementById("simPlaceholder");
   if (ph) ph.style.display = "none";
   simPlan = planData.sequence;
+  fitArmToPlan(simPlan);
   simStepIdx = 0;
   simSorting = true;
   document.getElementById("simStatus").textContent = "executing";
@@ -320,12 +358,13 @@ function beginSimStep() {
     stepEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  block.userData.pick = block.position.clone();
   const pa = worldToArm(block.position.x, block.position.z);
-  const ik = ikAngles(pa.dist, block.position.y + 0.1);
+  const ik = ikAngles(pa.dist, CARRY_Y);
   setSimPhase(
     "reachAbove",
     { base: simPose.base, s1: simPose.s1, s2: simPose.s2 },
-    { base: pa.angle, s1: Math.min(ik.s1 + 0.45, 1.4), s2: ik.s2 + 0.2 },
+    { base: nearAngle(pa.angle, simPose.base), s1: ik.s1, s2: ik.s2 },
     block,
   );
 }
@@ -345,16 +384,32 @@ function advanceSimPhase() {
 
   if (simPhase === "reachAbove") {
     const pa = worldToArm(block.position.x, block.position.z);
-    const ik = ikAngles(pa.dist, block.position.y);
+    const ik = ikAngles(pa.dist, block.userData.oy);
     setSimPhase("descend", { s1: simPose.s1, s2: simPose.s2 }, { s1: ik.s1, s2: ik.s2 }, block);
   } else if (simPhase === "descend") {
+    try {   // diagnostic: how far is the claw from the block it is about to grab?
+      const tip = new THREE.Vector3(0, -CLAW_LEN, 0);
+      wrist.updateWorldMatrix(true, false);
+      wrist.localToWorld(tip);
+      const miss = Math.hypot(tip.x - block.position.x, tip.z - block.position.z);
+      console.info(`[sim] step ${step.step}: claw is ${miss.toFixed(2)} from the block at pick (about 0 is correct), arm scale ${armRoot.scale.x.toFixed(2)}`);
+    } catch (_) {}
     setSimPhase("grab", { clw: clawSpread }, { clw: 0.05 }, block);
   } else if (simPhase === "grab") {
     simHeld = block;
-    setSimPhase("liftUp", { s1: simPose.s1, s2: simPose.s2 }, { s1: 0.75, s2: -0.55 }, block);
+    const pk = worldToArm(block.userData.pick.x, block.userData.pick.z);
+    const up = ikAngles(pk.dist, CARRY_Y);
+    setSimPhase("liftUp", { s1: simPose.s1, s2: simPose.s2 }, { s1: up.s1, s2: up.s2 }, block);
   } else if (simPhase === "liftUp") {
+    // carry: swing the base AND extend/retract toward the point above the target
     const ta = worldToArm(tgt.x, tgt.z);
-    setSimPhase("swing", { base: simPose.base }, { base: ta.angle }, block);
+    const over = ikAngles(ta.dist, CARRY_Y);
+    setSimPhase(
+      "swing",
+      { base: simPose.base, s1: simPose.s1, s2: simPose.s2 },
+      { base: nearAngle(ta.angle, simPose.base), s1: over.s1, s2: over.s2 },
+      block,
+    );
   } else if (simPhase === "swing") {
     const ta = worldToArm(tgt.x, tgt.z);
     const ik = ikAngles(ta.dist, block.userData.oy);
@@ -364,7 +419,11 @@ function advanceSimPhase() {
     simHeld = null;
     setSimPhase("release", { clw: clawSpread }, { clw: 0.14 }, block);
   } else if (simPhase === "release") {
-    setSimPhase("retract", { s1: simPose.s1, s2: simPose.s2 }, { s1: 0.25, s2: -0.45 }, block);
+    // lift straight up over the spot just placed (an upright "home" pose would be very
+    // tall once the arm is scaled to reach the whole table)
+    const ta = worldToArm(tgt.x, tgt.z);
+    const up = ikAngles(ta.dist, CARRY_Y);
+    setSimPhase("retract", { s1: simPose.s1, s2: simPose.s2 }, { s1: up.s1, s2: up.s2 }, block);
   } else if (simPhase === "retract") {
     const stepEl = document.getElementById(`step-${step.step}`);
     if (stepEl) stepEl.classList.add("done");
@@ -396,14 +455,18 @@ function animateSim() {
     if (simPhaseT >= 1) advanceSimPhase();
   }
 
+  // ease the arm to its fitted size (finishes within the first reach move)
+  const cs = armRoot.scale.x;
+  armRoot.scale.setScalar(cs + (armScaleTarget - cs) * 0.2);
+
   turret.rotation.y = simPose.base;
-  seg1.rotation.x = -simPose.s1;
-  seg2.rotation.x = -simPose.s2;
-  wrist.rotation.x = simPose.s1 + simPose.s2;
+  seg1.rotation.x = simPose.s1;
+  seg2.rotation.x = simPose.s2;
+  wrist.rotation.x = -(simPose.s1 + simPose.s2);   // keeps the claw pointing straight down
 
   if (simHeld) {
     const gp = getGripWorld();
-    simHeld.position.set(gp.x, gp.y - CLAW_LEN - 0.1, gp.z);
+    simHeld.position.set(gp.x, gp.y - (CLAW_LEN + CLAW_CLEARANCE) * armRoot.scale.x, gp.z);
   }
 
   simZones.forEach((z) => {
@@ -416,9 +479,16 @@ function animateSim() {
     if (b) lbl.position.set(b.position.x, b.position.y + 1.0, b.position.z);
   });
 
-  const ca = simTime * 0.06;
-  camera.position.set(Math.sin(ca) * 11, 10, Math.cos(ca) * 9);
-  camera.lookAt(0, 1, 0);
+  if (simSorting) {
+    // hold a steady front view (matches the camera photo) so the motion is easy to follow
+    const front = Math.round(camAngle / (Math.PI * 2)) * Math.PI * 2;
+    camAngle += (front - camAngle) * 0.05;
+  } else {
+    camAngle += dt * 0.06;
+  }
+  const zoom = 1 + CAM_ZOOM_K * (armRoot.scale.x - 1);
+  camera.position.set(Math.sin(camAngle) * 11 * zoom, 10 * zoom, Math.cos(camAngle) * 9 * zoom);
+  camera.lookAt(0, 1 + CAM_LOOK_K * (zoom - 1), 0);
 
   renderer.render(scene, camera);
 }
@@ -437,3 +507,14 @@ window.addEventListener("resize", () => {
 });
 
 initSim();
+
+// Build stamp: if you can't see this badge (bottom-right of the page) after a hard refresh,
+// the browser is not running this file. Safe to delete once everything works.
+console.info("[sim] simulation.js build: arm-fix v2");
+try {
+  const stamp = document.createElement("div");
+  stamp.textContent = "sim: arm-fix v2";
+  stamp.style.cssText = "position:fixed;right:8px;bottom:6px;font:10px monospace;color:#8a8aa0;" +
+    "pointer-events:none;z-index:9999;opacity:0.8";
+  document.body.appendChild(stamp);
+} catch (_) {}

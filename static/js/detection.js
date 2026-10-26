@@ -63,7 +63,11 @@ async function runDetection(imageDataUrl) {
     const resp = await fetch(`${API}/api/detect`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: base64 }),
+      // Video-mode camera scans ask the server for the video prompt; uploads and photo
+      // scans send the same body as before.
+      body: JSON.stringify(
+        isVideoMode && stream ? { image: base64, source: "video" } : { image: base64 }
+      ),
     });
 
     if (!resp.ok) {
@@ -268,7 +272,7 @@ function renderTagStrip(ws, numFn = null) {
         ? "Where the robot arm is mounted — kept clear"
         : "A person was detected here — the robot won't reach into this area"
     );
-    tag.textContent = `⚠ ${zone.label || zone.type === "robot_base" ? "robot base" : "human"}`;
+    tag.textContent = `⚠ ${zone.type === "robot_base" ? "robot base" : "human"}`;
     strip.appendChild(tag);
   }
 }

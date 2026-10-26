@@ -14,6 +14,7 @@ import base64
 import io
 import pathlib
 import asyncio
+import threading
 import time
 import numpy as np
 import cv2
@@ -33,6 +34,7 @@ from core.gemini_agents import (
     evaluate_plan,
     category_to_color,
     _path_crosses_any_zone,
+    _in_any_zone,
 )
 from tracker import ObjectTracker, HumanZoneTracker, check_drift, bbox_px_from_normalized
 from core import storage as db
@@ -89,6 +91,15 @@ REPLAN_COOLDOWN: float = 8.0      # seconds between auto-replans
 _replan_lock = asyncio.Lock()
 _tracker_frame_size: tuple | None = None  # (w, h) CSRT was initialised at
 _ws_clients: list[WebSocket] = []
+MIN_BLOCKED_FRAMES = 3            # consecutive frames a path must be blocked before replanning
+_blocked_streak: int = 0
+# Guards tracker_pool / human_zone_tracker: frames are now tracked in worker threads,
+# while _init_trackers (replan or scan) swaps them out.
+_tracker_state_lock = threading.RLock()
+# Latest sharper (640x480) frame from the browser, used only for Gemini re-detection.
+_hi_frame_b64: str | None = None
+_hi_frame_time: float = 0.0
+HI_FRAME_MAX_AGE = 1.5            # seconds; older than this and objects may have moved
 
 
 def log(msg, level="info"):
@@ -105,6 +116,12 @@ def _decode_frame_b64(frame_b64: str):
 
 
 def _init_trackers(workspace: dict, frame):
+    """Thread-safe wrapper (same signature as before, so existing callers are unchanged)."""
+    with _tracker_state_lock:
+        _init_trackers_locked(workspace, frame)
+
+
+def _init_trackers_locked(workspace: dict, frame):
     """Initialise CSRT trackers and MediaPipe pose tracker from a fresh workspace."""
     global tracker_pool, human_zone_tracker, current_step_index, last_replan_time, _tracker_frame_size
 
@@ -152,19 +169,34 @@ async def _auto_replan(frame_b64: str):
     """Re-detect and re-plan using the current frame. Rate-limited by REPLAN_COOLDOWN."""
     global current_workspace, current_plan, current_step_index, last_replan_time
 
+    # Detect on the sharper frame if a fresh one is cached; trackers are still
+    # initialised from the 320x240 frame below (detection boxes are normalized).
+    detect_src = frame_b64
+    if _hi_frame_b64 and (time.time() - _hi_frame_time) <= HI_FRAME_MAX_AGE:
+        detect_src = _hi_frame_b64
+
     async with _replan_lock:
         last_replan_time = time.time()
         log("Auto-replan: re-detecting workspace...", "replan")
         try:
-            loop = asyncio.get_event_loop()
-            workspace = await loop.run_in_executor(None, detect_objects_hybrid, frame_b64)
+            loop = asyncio.get_running_loop()
+            prev = (current_workspace or {}).get("workspace", {}).get("objects", [])
+            workspace = await loop.run_in_executor(
+                None,
+                lambda: detect_objects_hybrid(detect_src, video=True, prev_objects=prev),
+            )
+            if not workspace["workspace"]["objects"]:
+                log("Replan aborted: 0 objects detected, keeping previous plan", "warn")
+                return
             current_workspace = workspace
 
             frame = _decode_frame_b64(frame_b64)
             if frame is not None:
                 _init_trackers(workspace, frame)
 
-            plan = await loop.run_in_executor(None, plan_sorting, workspace)
+            plan = await loop.run_in_executor(
+                None, lambda: plan_sorting(workspace, video=True)
+            )
             current_plan = plan
             current_step_index = 0
 
@@ -254,9 +286,15 @@ async def detect_endpoint(request: Request):
 
     try:
         log("Starting hybrid detection...")
+        # Opt-in: only the video-mode scan sends source="video". Uploads and photo scans
+        # send nothing, so for them this call is exactly what it was before.
+        detect_kwargs = {"video": True} if body.get("source") == "video" else {}
+        if detect_kwargs:
+            log("Video-mode scan: using video detection prompt", "detect")
         workspace = detect_objects_hybrid(
             image_data,
             status_callback=lambda msg: log(msg, "detect"),
+            **detect_kwargs,
         )
 
         current_workspace = workspace
@@ -435,14 +473,41 @@ async def websocket_endpoint(websocket: WebSocket):
             _ws_clients.remove(websocket)
 
 
+def _track_frame_sync(frame):
+    """Blocking per-frame tracking work; executed in a worker thread."""
+    with _tracker_state_lock:
+        return _track_frame_locked(frame)
+
+
+def _track_frame_locked(frame):
+    h, w = frame.shape[:2]
+    positions, lost_objects = {}, []
+    for obj_id, tracker in list(tracker_pool.items()):
+        success, _ = tracker.update(frame)
+        if success:
+            cx, cy = tracker.centroid_normalized(w, h)
+            positions[obj_id] = {
+                "centroid": {"x": cx, "y": cy},
+                "bbox": tracker.bbox_normalized(w, h),
+            }
+        if tracker.lost:
+            lost_objects.append(obj_id)
+    human_zone = human_zone_tracker.update(frame) if human_zone_tracker else None
+    return positions, lost_objects, human_zone
+
+
 @app.post("/api/video/frame")
 async def video_frame_endpoint(request: Request):
-    global last_replan_time
+    global last_replan_time, _blocked_streak, _hi_frame_b64, _hi_frame_time
 
     body = await request.json()
     frame_b64 = body.get("frame")
     if not frame_b64:
         return JSONResponse({"error": "No frame provided"}, status_code=400)
+
+    frame_hi = body.get("frame_hi")
+    if isinstance(frame_hi, str) and frame_hi:
+        _hi_frame_b64, _hi_frame_time = frame_hi, time.time()
 
     frame = _decode_frame_b64(frame_b64)
     if frame is None:
@@ -454,25 +519,15 @@ async def video_frame_endpoint(request: Request):
 
     h, w = frame.shape[:2]
 
-    # Update object trackers
-    positions = {}
-    lost_objects = []
-    for obj_id, tracker in tracker_pool.items():
-        success, _ = tracker.update(frame)
-        if success:
-            cx, cy = tracker.centroid_normalized(w, h)
-            positions[obj_id] = {
-                "centroid": {"x": cx, "y": cy},
-                "bbox": tracker.bbox_normalized(w, h),
-            }
-        else:
-            lost_objects.append(obj_id)
-
-    # Update human safety zone
-    human_zone = human_zone_tracker.update(frame) if human_zone_tracker else None
+    # Run CSRT + MediaPipe off the event loop so frames/websockets don't stall
+    loop = asyncio.get_running_loop()
+    positions, lost_objects, human_zone = await loop.run_in_executor(
+        None, _track_frame_sync, frame
+    )
 
     # Build current zones list with updated human polygon for path checks
     stale_steps, blocked_steps = [], []
+    release_deferred = False
     if current_plan and current_workspace:
         ws = current_workspace.get("workspace", {})
         zones = list(ws.get("safety_zones", []))
@@ -482,6 +537,7 @@ async def video_frame_endpoint(request: Request):
                 for z in zones
             ]
 
+        human_zones = [z for z in zones if z.get("type") == "human_presence"]
         obj_anchors = {o["id"]: o["centroid"] for o in ws.get("objects", [])}
         sequence = current_plan.get("sequence", [])
 
@@ -495,6 +551,12 @@ async def video_frame_endpoint(request: Request):
                 if check_drift((cur["x"], cur["y"]), (anchor["x"], anchor["y"])):
                     stale_steps.append(step_idx)
 
+            if step.get("deferred") and obj_id in obj_anchors:
+                # Waiting on a human zone: replan once the object is no longer inside one.
+                pos = positions.get(obj_id, {}).get("centroid") or obj_anchors[obj_id]
+                if not _in_any_zone(pos["x"], pos["y"], human_zones):
+                    release_deferred = True
+
             frm = step.get("from", {})
             to = step.get("to", {})
             if frm and to and not step.get("skip"):
@@ -506,7 +568,11 @@ async def video_frame_endpoint(request: Request):
                     blocked_steps.append(step_idx)
 
     cooldown_clear = (time.time() - last_replan_time) >= REPLAN_COOLDOWN
-    needs_replan = bool(stale_steps or blocked_steps or lost_objects)
+    _blocked_streak = _blocked_streak + 1 if blocked_steps else 0
+    needs_replan = bool(
+        stale_steps or lost_objects or release_deferred
+        or _blocked_streak >= MIN_BLOCKED_FRAMES
+    )
     replanning = False
 
     if needs_replan and cooldown_clear and not _replan_lock.locked():

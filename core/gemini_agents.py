@@ -163,6 +163,99 @@ Respond ONLY with valid JSON, no markdown fences, no explanation:
 }"""
 
 
+VIDEO_EXTRA_RULES = """
+ADDITIONAL RULES FOR LIVE VIDEO FRAMES:
+- Do not classify worn clothing, or items being held or touched by a person, as movable workspace objects. Represent visible people or body parts only in the "humans" list.
+- Only list objects fully resting on the surface. If unsure, omit it.
+- Include large or close-to-camera objects (e.g. a bottle filling much of the frame).
+- If you cannot identify an object, label it "unknown_object" rather than guessing a specific name.
+"""
+
+VIDEO_DETECTION_PROMPT = DETECTION_PROMPT.replace(
+    "\nRespond ONLY with valid JSON", VIDEO_EXTRA_RULES + "\nRespond ONLY with valid JSON", 1
+)
+
+
+def _video_gen_config(model_name):
+    """Generation config for live-video detection (never used for photo uploads)."""
+    base = dict(max_output_tokens=4096, response_mime_type="application/json")
+    if str(model_name).lower().startswith("gemini-3"):
+        # Gemini 3.x: use thinking_level, leave temperature at its default (per Google guidance).
+        try:
+            return types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_level="minimal"), **base
+            )
+        except Exception:  # older google-genai without thinking_level
+            return types.GenerateContentConfig(**base)
+    # Gemini 2.x: thinking_budget=0 turns thinking off.
+    return types.GenerateContentConfig(
+        temperature=0.0, thinking_config=types.ThinkingConfig(thinking_budget=0), **base
+    )
+
+
+def _match_previous_ids(objects, prev_objects, status=None):
+    """
+    Reuse IDs from the previous detection for objects that are clearly the same.
+    Greedy nearest-centroid matching, each previous ID used at most once:
+      same label    -> match within 0.15 (normalized units)
+      same category -> match within 0.07
+    Unmatched objects get fresh IDs that never collide with reused or retired ones.
+    """
+    if not objects or not prev_objects:
+        return objects
+    pairs = []
+    for i, o in enumerate(objects):
+        for j, pv in enumerate(prev_objects):
+            pc = pv.get("centroid")
+            if not pc or not pv.get("id"):
+                continue
+            d = ((o["centroid"]["x"] - pc["x"]) ** 2 + (o["centroid"]["y"] - pc["y"]) ** 2) ** 0.5
+            if o["label"] == pv.get("label"):
+                limit = 0.15
+            elif o["category"] == pv.get("category"):
+                limit = 0.07
+            else:
+                continue
+            if d <= limit:
+                pairs.append((d, i, j))
+    pairs.sort()
+    used_new, used_prev, assigned = set(), set(), {}
+    for d, i, j in pairs:
+        if i in used_new or j in used_prev:
+            continue
+        used_new.add(i); used_prev.add(j)
+        assigned[i] = prev_objects[j]["id"]
+
+    def _num(oid):
+        try:
+            return int(str(oid).split("_")[-1])
+        except ValueError:
+            return 0
+
+    taken = set(assigned.values())
+    counter = max([_num(pv.get("id")) for pv in prev_objects] + [_num(v) for v in taken] + [0]) + 1
+    for i, o in enumerate(objects):
+        if i in assigned:
+            o["id"] = assigned[i]
+        else:
+            o["id"] = f"obj_{counter:03d}"
+            counter += 1
+    if status:
+        status(f"  Reused {len(assigned)}/{len(objects)} object IDs from previous frame")
+    return objects
+
+
+def _build_video_prompt(prev_objects=None):
+    prompt = VIDEO_DETECTION_PROMPT
+    if prev_objects:
+        prev = ", ".join(f"{o.get('id')}={o.get('label')}" for o in prev_objects)
+        prompt += (
+            "\n\nPREVIOUS FRAME OBJECTS (labels only, for consistency): " + prev +
+            "\nIf an object is clearly the same one, reuse the same label."
+        )
+    return prompt
+
+
 def _normalize_bbox(raw_bbox: dict) -> dict | None:
     """
     Normalize a Gemini-returned bbox to a {x_min, y_min, x_max, y_max} dict
@@ -340,7 +433,7 @@ def _make_safety_polygon(bbox, margin=0.05):
     ]
 
 
-def detect_objects_hybrid(image_source, status_callback=None):
+def detect_objects_hybrid(image_source, status_callback=None, video=False, prev_objects=None):
     """
     Hybrid detection: Gemini identifies + rough locates,
     OpenCV refines coordinates.
@@ -382,14 +475,21 @@ def detect_objects_hybrid(image_source, status_callback=None):
 
     status("Sending to Gemini for object identification...")
     client = _get_client()
+    if video:
+        # Live-video path only. Photo uploads keep the original prompt and config below.
+        prompt_text = _build_video_prompt(prev_objects)
+        gen_cfg = _video_gen_config(GEMINI_MODEL)
+    else:
+        prompt_text = DETECTION_PROMPT
+        gen_cfg = types.GenerateContentConfig(
+            temperature=0.0,
+            max_output_tokens=8192,
+        )
     response = _gemini_with_retry(
         lambda: client.models.generate_content(
             model=GEMINI_MODEL,
-            contents=[DETECTION_PROMPT, img_pil],
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                max_output_tokens=8192,
-            ),
+            contents=[prompt_text, img_pil],
+            config=gen_cfg,
         ),
         status_cb=status,
     )
@@ -454,6 +554,9 @@ def detect_objects_hybrid(image_source, status_callback=None):
         })
 
         status(f"  {raw_obj.get('label', '?')} — refined by {source}")
+
+    if video and prev_objects:
+        objects = _match_previous_ids(objects, prev_objects, status)
 
     safety_zones = []
     zone_counter = 1
@@ -655,7 +758,7 @@ def _build_few_shot_context(past_sessions):
     return "\n".join(lines)
 
 
-def plan_sorting(workspace_data, past_sessions=None, status_callback=None):
+def plan_sorting(workspace_data, past_sessions=None, status_callback=None, video=False):
     """
     Gemini Agent 2: plans the sorting sequence.
     Falls back to heuristic if Gemini fails.
@@ -748,7 +851,7 @@ def plan_sorting(workspace_data, past_sessions=None, status_callback=None):
         status(f"Gemini planning failed ({e}), using heuristic")
         plan = _heuristic_plan(objects, safety_zones)
 
-    plan, relocated = _enforce_safety(plan, safety_zones, objects)
+    plan, relocated = _enforce_safety(plan, safety_zones, objects, defer_in_zone=video)
     skipped = sum(1 for s in plan.get("sequence", []) if s.get("skip"))
     if relocated:
         status(f"Safety enforcement: relocated {relocated} target(s) outside safety zones")
@@ -826,7 +929,7 @@ def _in_any_zone(x, y, safety_zones):
     )
 
 
-def _enforce_safety(plan, safety_zones, objects=None):
+def _enforce_safety(plan, safety_zones, objects=None, defer_in_zone=False):
     """
     Hard-constraint pass applied after both Gemini and heuristic planners.
 
@@ -857,6 +960,8 @@ def _enforce_safety(plan, safety_zones, objects=None):
         c for c in candidates if not _in_any_zone(c["x"], c["y"], safety_zones)
     ]
 
+    human_zones = [z for z in safety_zones if z.get("type") == "human_presence"]
+
     used = []
     # category → list of placed positions for that category
     cat_placed = {}
@@ -868,6 +973,20 @@ def _enforce_safety(plan, safety_zones, objects=None):
         to = step["to"]
         fx, fy = frm.get("x", to["x"]), frm.get("y", to["y"])
         category = cat_map.get(step.get("object_id"), "other")
+
+        # Video mode only: an object that starts inside a HUMAN zone (e.g. under a
+        # hand) is deferred until the zone clears. Objects inside the static robot-base
+        # zone are not deferred (that zone never clears) and keep the original
+        # relocate-or-skip handling. Photos never take this branch (defer_in_zone=False).
+        if defer_in_zone and _in_any_zone(fx, fy, human_zones):
+            step["skip"] = True
+            step["deferred"] = True
+            step["reason"] = (
+                (step.get("reason") or "")
+                + " [deferred: object is inside a human safety zone - waiting for it to clear]"
+            )
+            skipped += 1
+            continue
 
         dest_unsafe = _in_any_zone(to["x"], to["y"], safety_zones)
         path_unsafe = _path_crosses_any_zone(fx, fy, to["x"], to["y"], safety_zones)

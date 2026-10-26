@@ -65,25 +65,35 @@ class ObjectTracker:
         """
         self.object_id = object_id
         self.lost = False
+        self._misses = 0
+        self.MAX_MISSES = 5   # consecutive failed frames before the object counts as lost
         self._bbox = tuple(int(v) for v in bbox_xywh)
         try:
             self._tracker = cv2.legacy.TrackerCSRT_create()
             self._tracker.init(frame, self._bbox)
         except (AttributeError, cv2.error):
+            # Without CSRT nothing can be tracked. Report the last known position as
+            # "not lost" so this does not trigger a Gemini replan every few seconds.
             self._tracker = None
-            self.lost = True
+            self.lost = False
+            print("[tracker] cv2.legacy.TrackerCSRT_create unavailable - "
+                  "run: pip uninstall -y opencv-python && pip install opencv-contrib-python")
 
     def update(self, frame) -> tuple[bool, tuple]:
         """Returns (success, (x, y, w, h)). Sets self.lost=True on failure."""
         if self._tracker is None:
-            return False, self._bbox
+            return True, self._bbox
         success, bbox = self._tracker.update(frame)
         if success:
             self._bbox = tuple(int(v) for v in bbox)
+            self._misses = 0
             self.lost = False
         else:
-            self.lost = True
-        return success, self._bbox
+            # Tolerate brief occlusions (e.g. a hand passing over): only flag lost
+            # after MAX_MISSES consecutive failures, and keep the last known bbox.
+            self._misses += 1
+            self.lost = self._misses >= self.MAX_MISSES
+        return (success or not self.lost), self._bbox
 
     def centroid_normalized(self, frame_w: int, frame_h: int) -> tuple[float, float]:
         x, y, w, h = self._bbox
