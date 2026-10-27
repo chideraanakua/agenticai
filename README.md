@@ -104,7 +104,7 @@ agentai/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/srikeerthis/agentai
+git clone https://github.com/chideraanakua/agentai
 cd agentai
 ```
 
@@ -321,4 +321,3 @@ pip install opencv-python-headless
 ## Team
 
 **agentai** — the robot arm that thinks before it moves.
-Built for TechEx Hackathon — Track 3: Robotics & Simulation.
