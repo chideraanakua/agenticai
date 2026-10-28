@@ -117,12 +117,12 @@ Camera live feed (5fps frame loop)
 
 ## Changelog
 
-### 2026-05-17 — Video-support merged to master; frontend refactor
+###  Video-support merged to master; frontend refactor
 
 - **Merge:** `prp-dev-video-support` branch merged to master — all video mode features, tracker.py, server video endpoints, and render.yaml are now on master.
 - **Refactor: frontend split into modules (`static/`)** — `index.html` reduced from 2535 lines to 370-line HTML skeleton. CSS extracted into `css/layout.css` (111 lines), `css/components.css` (298 lines), `css/ui.css` (269 lines). JS extracted into `js/camera.js` (117 lines), `js/detection.js` (268 lines), `js/planning.js` (148 lines), `js/simulation.js` (437 lines), `js/overlay.js` (327 lines). Load order matters: `camera.js` defines all global state and must be first.
 
-### 2026-05-17 — Evaluator calibration, similarity-ranked few-shot, loop closure
+###  Evaluator calibration, similarity-ranked few-shot, loop closure
 
 - **Feat: evaluator calibration dashboard card (`core/storage.py`, `server.py`, `static/dashboard.html`)** — `get_calibration_stats()` returns per-session predicted vs actual deltas, MAE, and bias. `GET /api/calibration` endpoint added. Dashboard shows a calibration card (hidden until ≥1 session has both eval_score and human rating) with MAE, bias (over/under-predicts label), sample count, and a per-session delta table. All metrics and column headers have hover tooltips for first-time viewers.
 
@@ -132,7 +132,7 @@ Camera live feed (5fps frame loop)
 
 - **Fix: evaluator→planner loop closed (`core/storage.py`, `core/gemini_agents.py`)** — `get_rated_sessions()` now uses `COALESCE(rating, ROUND(eval_score)) AS effective_rating` so every evaluated session (not just manually rated ones) contributes to the few-shot pool. `_build_few_shot_context()` marks these as `(auto-evaluated)` vs `(human-rated)`.
 
-### 2026-05-17 — Few-shot learning loop, evaluator agent, category-aware relocation
+### Few-shot learning loop, evaluator agent, category-aware relocation
 
 - **Fix: detected object numbers now sync with sorting plan (`static/index.html`)** — after plan generation, the detected objects canvas and tag strip are redrawn using plan step numbers (instead of detection order). Skipped objects get a grey dashed bounding box and strikethrough in the tag strip. Before plan generation, detection order is used as before.
 
@@ -148,7 +148,7 @@ Camera live feed (5fps frame loop)
 
 - **Feat: evaluator critique fed back into planner (`core/gemini_agents.py`)** — `_build_few_shot_context()` includes the stored `eval_critique` alongside the user comment for each example, giving Gemini two feedback signals per session.
 
-### 2026-05-16 — SDK migration, project restructure, sim labels, safe-area fix
+###  SDK migration, project restructure, sim labels, safe-area fix
 
 - **Refactor: project restructure** — flat root reorganised into `core/` (AI pipeline + storage), `cli/` (standalone tools), `tests/` (unit tests), `samples/` (test images). All imports updated across `server.py`, `cli/feed_photo.py`, and `tests/`. `conftest.py` added at project root for pytest path resolution.
 
@@ -166,7 +166,7 @@ Camera live feed (5fps frame loop)
 
 - **Tests (`tests/test_enforce_safety.py`)** — 5 unit tests covering: object inside zone → skip, object outside zone safe path → unchanged, outside zone path crosses zone → relocate, destination inside zone → relocate, multiple objects inside zone → all skipped. All 5 passing.
 
-### 2026-05-15 — Video tracking pipeline
+### Video tracking pipeline
 
 - **Feat:** `tracker.py` — `ObjectTracker` (OpenCV CSRT per object) and `HumanZoneTracker` (MediaPipe Pose Tasks API) provide frame-level position updates without Gemini calls. MediaPipe model auto-downloaded on first use.
 - **Feat:** `POST /api/video/frame` — runs CSRT + MediaPipe each frame, checks drift and path-crossing, triggers `_auto_replan()` when issues found and 8s cooldown elapsed.
@@ -181,7 +181,7 @@ Camera live feed (5fps frame loop)
 - **Fix:** Gemini 429/quota errors were unhandled crashes. `_gemini_with_retry()` now retries both agents up to 3× with 5→15→30s backoff.
 - **Fix:** Planning JSON compacted (`separators=(',',':')`, 2dp coords) to reduce token usage ~35% and stay within free-tier limits.
 
-### 2026-05-14 — Session persistence, image storage & replay
+###  Session persistence, image storage & replay
 
 - **Feat (`gemini_agents.py`):** Plan steps now include `object_label` alongside `object_id` — injected after `_enforce_safety()` runs using an `id → label` map built from the workspace objects. Applies to both Gemini and heuristic plan paths.
 
@@ -203,7 +203,7 @@ Camera live feed (5fps frame loop)
   - `updateSimWorkspace` and `renderSteps` now run before the image fetch so the simulation is ready even if image loading is slow or fails.
   - Banner is shown before the try block so failure messages are always visible to the user.
 
-### 2026-05-13 — Pre-demo fixes
+### Pre-demo fixes
 
 - **Bug fix:** `_enforce_safety()` now deduplicates destinations — a candidate placement is rejected if another object was already relocated within 0.08 normalized units of it, preventing objects from being stacked at the same spot.
 - **Bug fix:** Safety enforcement (`_enforce_safety()`) was skipped when Gemini succeeded — it only ran on the heuristic fallback path. Fixed so it always runs.
@@ -213,7 +213,7 @@ Camera live feed (5fps frame loop)
 - **Fix:** `alert()` popups on errors replaced with inline red status text in each panel.
 - **Feat:** Live server log polling during Gemini calls — `/api/state` polled every 800ms, streamed into UI status elements.
 
-### 2026-05-13 — Initial state
+###  Initial state
 
 - Two-agent pipeline fully implemented: Gemini + OpenCV hybrid detection, Gemini spatial planner with heuristic fallback, safety enforcement
 - **Unity dropped** — Three.js is now the sole simulation layer; `unity_scripts/` removed. `WS /ws/unity` was initially dead code but was repurposed in the video-support branch as the auto-replan push channel (server → frontend)

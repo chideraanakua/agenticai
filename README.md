@@ -1,7 +1,7 @@
 # agentai
 
 **Adaptive Spatial-Sorting & Safety Engine**
-Track 3: Robotics & Simulation
+Robotics & Simulation
 
 An AI-orchestrated pipeline that turns workspace chaos into collision-free robotic sorting — validated in a digital twin before a single motor moves.
 
