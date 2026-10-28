@@ -38,9 +38,6 @@ agentai/
 │   └── feed_photo.py           # CLI tool to push a photo into running server
 ├── tests/
 │   └── test_enforce_safety.py  # Safety enforcement unit tests (5 tests)
-├── samples/
-│   ├── Photos/                 # Test images (perspective_1–5, human_in_middle, more_objects)
-│   └── Videos/                 # Sample video clips
 └── static/
     ├── index.html              # HTML skeleton — 4-panel browser demo
     ├── dashboard.html          # Session review + rating dashboard
