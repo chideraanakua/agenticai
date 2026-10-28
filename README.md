@@ -10,12 +10,6 @@ An AI-orchestrated pipeline that turns workspace chaos into collision-free robot
 *Detection running on a live camera feed — human presence 
 detected, safety zones enforced, unsafe steps skipped automatically.*
 
-![agentai detecting](samples/Photos/detecting.gif)
-
-*Desktop view of the complete pipeline*
-
-<img src="samples/Photos/safe-arc.png" width="100%" 
-alt="agentai full pipeline — 4 panel view"/>
 
 Demo Link: https://turtle-superb-lovely.ngrok-free.app/
 
@@ -71,7 +65,7 @@ agentai/
 │   └── feed_photo.py    # Feed a photo into a running server
 ├── tests/
 │   └── test_enforce_safety.py
-├── samples/
+├── *samples/
 │   ├── Photos/          # Test images (perspective_1–5, human_in_middle, more_objects)
 │   └── Videos/          # Sample video clips
 └── static/
